@@ -272,7 +272,12 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 			let mut counts = Vec::with_capacity(nf);
 			let mut two_base = false;
 			for ifile in ifiles.iter_mut() {
-				if let Some(rec) = ifile.current.take().and_then(|r| if r.reg_idx == idx && r.pos == x { Some(r) } else { None }){
+				if let Some(rec) = ifile.current.take().and_then(|r| if r.reg_idx == idx && r.pos == x {
+					Some(r)
+				} else {
+					ifile.set_current(r);
+					None
+				}){
 					counts.push(rec.counts);
 					two_base = two_base || rec.two_base;
 				} else {
@@ -359,7 +364,12 @@ pub(super) fn merge_thread(mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut s
 			let mut counts: Vec<Counts> = Vec::new();
 			let mut two_base = false;
 			for chan in channels.iter_mut() {
-				if let Some(rec) = chan.curr_rec.take().and_then(|r| if r.reg_idx == idx && r.pos == x { Some(r) } else { None }) {
+				if let Some(rec) = chan.curr_rec.take().and_then(|r| if r.reg_idx == idx && r.pos == x {
+					Some(r)
+				} else {
+					chan.curr_rec = Some(r);
+					None
+				}) {
 					two_base = two_base || rec.two_base;
 					let MultiRecord { counts: mut cn, .. } = rec;
 					counts.append(&mut cn)
