@@ -102,12 +102,12 @@ fn merge_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<H
 	};
 	let output_type = msub.value_of("output_type").map(OutputType::from_str).flatten();
 
+	cfg.set_compress(msub.is_present("compress"));
+
 	cfg.set_merge_outputs(output_type, value_delim, msub.values_of("output_names"));
 
 	cfg.set_summary(!msub.is_present("no_summary"));
 
-	cfg.set_compress(msub.is_present("compress"));
-	
 	if msub.is_present("similarity") {
 		handle_similarity_opts(&mut cfg, msub)
 	}

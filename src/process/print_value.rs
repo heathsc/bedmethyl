@@ -1,10 +1,10 @@
 use std::io::{self, Write, BufWriter};
 
-use compress_io::{
-	compress_type::{CompressThreads, CompressType},
-};
+use r_htslib::*;
 
 use crate::config::*;
+
+type Wrt = BufWriter<OwnedWriter>;
 
 pub(super) trait PrintValue {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()>;
@@ -22,23 +22,23 @@ impl PrintValue for NoOutput {
 	fn print_str(&mut self, _s: &str) -> io::Result<()> { Ok(()) }
 }
 
-struct NonconvConv<W: Write> {
-	wrt: BufWriter<W>,
+struct NonconvConv {
+	wrt: Wrt,
 	delim: char,
 }
 
-impl <W: Write>PrintValue for NonconvConv<W> {
+impl PrintValue for NonconvConv {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()> { write!(self.wrt, "\t{}{}{}", a, self.delim, b) }
 	fn print_missing(&mut self) -> io::Result<()> { write!(self.wrt, "\tNA{}NA", self.delim) }
 	fn print_header(&mut self, id: &str) -> io::Result<()> { write!(self.wrt, "\t{}:nc{}{}:c", id, self.delim, id) }
 	fn print_str(&mut self, s: &str) -> io::Result<()> { write!(self.wrt, "{}", s) }
 }
 
-struct SplitNonconvConv<W: Write> {
-	pub(super) wrt: Vec<BufWriter<W>>,
+struct SplitNonconvConv {
+	pub(super) wrt: Vec<Wrt>,
 }
 
-impl <W: Write>PrintValue for SplitNonconvConv<W> {
+impl PrintValue for SplitNonconvConv {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()> {
 		write!(self.wrt[0], "\t{}", a)?;
 		write!(self.wrt[1], "\t{}", b)
@@ -57,23 +57,23 @@ impl <W: Write>PrintValue for SplitNonconvConv<W> {
 	}
 }
 
-struct NonconvCov<W: Write> {
-	wrt: BufWriter<W>,
+struct NonconvCov {
+	wrt: Wrt,
 	delim: char,
 }
 
-impl <W: Write>PrintValue for NonconvCov<W> {
+impl PrintValue for NonconvCov {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()> { write!(self.wrt, "\t{}{}{}", a, self.delim, a + b) }
 	fn print_missing(&mut self) -> io::Result<()> { write!(self.wrt, "\tNA{}NA", self.delim) }
 	fn print_header(&mut self, id: &str) -> io::Result<()> { write!(self.wrt, "\t{}:nc{}{}:cov", id, self.delim, id) }
 	fn print_str(&mut self, s: &str) -> io::Result<()> { write!(self.wrt, "{}", s) }
 }
 
-struct SplitNonconvCov<W: Write> {
-	wrt: Vec<BufWriter<W>>,
+struct SplitNonconvCov {
+	wrt: Vec<Wrt>,
 }
 
-impl <W: Write>PrintValue for SplitNonconvCov<W> {
+impl PrintValue for SplitNonconvCov {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()> {
 		write!(self.wrt[0], "\t{}", a)?;
 		write!(self.wrt[1], "\t{}", a + b)
@@ -92,23 +92,23 @@ impl <W: Write>PrintValue for SplitNonconvCov<W> {
 	}
 }
 
-struct MethCov<W: Write> {
-	wrt: BufWriter<W>,
+struct MethCov {
+	wrt: Wrt,
 	delim: char,
 }
 
-impl <W: Write>PrintValue for MethCov<W> {
+impl PrintValue for MethCov {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()> { write!(self.wrt, "\t{:.4}{}{}", (a as f64) / ((a + b) as f64), self.delim, a + b) }
 	fn print_missing(&mut self) -> io::Result<()> { write!(self.wrt, "\tNA{}NA", self.delim) }
 	fn print_header(&mut self, id: &str) -> io::Result<()> { write!(self.wrt, "\t{}:meth{}{}:cov", id, self.delim, id) }
 	fn print_str(&mut self, s: &str) -> io::Result<()> { write!(self.wrt, "{}", s) }
 }
 
-struct SplitMethCov<W: Write> {
-	wrt: Vec<BufWriter<W>>,
+struct SplitMethCov {
+	wrt: Vec<Wrt>,
 }
 
-impl <W: Write>PrintValue for SplitMethCov<W> {
+impl PrintValue for SplitMethCov {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()> {
 		write!(self.wrt[0], "\t{:.4}", (a as f64) / ((a + b) as f64))?;
 		write!(self.wrt[1],"\t{}", a + b)
@@ -127,11 +127,11 @@ impl <W: Write>PrintValue for SplitMethCov<W> {
 	}
 }
 
-struct Meth<W: Write> {
-	wrt: BufWriter<W>,
+struct Meth {
+	wrt: Wrt,
 }
 
-impl <W: Write>PrintValue for Meth<W> {
+impl PrintValue for Meth {
 	fn print_value(&mut self, a: u32, b: u32) -> io::Result<()> { write!(self.wrt,"\t{:.4}", (a as f64) / ((a + b) as f64)) }
 	fn print_missing(&mut self) -> io::Result<()> { write!(self.wrt, "\tNA") }
 	fn print_header(&mut self, id: &str) -> io::Result<()> { write!(self.wrt, "\t{}:meth", id) }
@@ -140,26 +140,28 @@ impl <W: Write>PrintValue for Meth<W> {
 
 pub(super) fn get_print_value(cfg: &Config) -> io::Result<Option<Box<dyn PrintValue>>> {
 	Ok(if let Some(mo) = cfg.merge_output() {
-		let ctype = if cfg.compress() {
-			Some(CompressType::Bgzip)
-		} else {
-			None
-		};
+
+		// Compression mode
+		let mode = if cfg.compress() { "wz" } else { "w" };
 		let mut wrt = Vec::new();
+
 		for s in cfg.merge_outputs().expect("No outputs").iter() {
-			debug!("Opening output file {:?} with compress type {:?}", s, ctype);
-			let mut c = compress_io::compress::CompressIo::new();
-			if let Some(ct) = ctype {
-				c.ctype(ct).cthreads(CompressThreads::NPhysCores);
+			debug!("Opening output file {:?} ", s);
+			let h = Hts::open(s, mode)?;
+			let mut w = OwnedWriter::new(h)?;
+			if cfg.compress() {
+				w.set_mt(num_cpus::get_physical(), 256);
 			}
-			wrt.push(c.path(s).bufwriter()?)
+			wrt.push(BufWriter::new(w))
 		}
+
 		let delim = match mo.value_delim() {
 			ValueDelim::Space => ' ',
 			ValueDelim::Comma => ',',
 			ValueDelim::Semicolon => ';',
 			_ => '\t',
 		};
+
 		let output_type = mo.output_type();
 		Some(if wrt.len() > 1 {
 			match output_type {

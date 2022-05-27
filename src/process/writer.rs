@@ -1,5 +1,6 @@
 use std::{
-	io::Write,
+	io::{Write, BufWriter},
+	fs::File,
 };
 
 use crossbeam_channel::Receiver;
@@ -94,7 +95,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 	// Write out sample summary statistics
 		let fname = cfg.mk_path("sample_stats.txt");
 		debug!("Writing out sample statistics to {:?}", fname);
-		let mut summ_wrt = compress_io::compress::CompressIo::new().path(fname).bufwriter()?;
+		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 
 		writeln!(summ_wrt, "barcode\tsample\tn_sites_passed\tmeth_mean\tmeth_var\tcounts:min\tcounts:Q1\tcounts:Q2\tcounts:Q3\tcounts:max")?;
 		for st in stats.iter() {
@@ -104,7 +105,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 		// Write out site summary statistics
 		let fname = cfg.mk_path("site_stats.txt");
 		debug!("Writing out site statistics to {:?}", fname);
-		let mut summ_wrt = compress_io::compress::CompressIo::new().path(fname).bufwriter()?;
+		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		
 		site_stats.write_report(&mut summ_wrt)?;
 	}
@@ -116,7 +117,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 			SimilarityType::Correlation => "corr.txt",
 			SimilarityType::Covariance => "covar.txt",
 		});
-		let mut summ_wrt = compress_io::compress::CompressIo::new().path(fname).bufwriter()?;
+		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		dist.print_table(&mut summ_wrt, samples)?;
 	}
 	
@@ -125,7 +126,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 	if let Some(mut hst) = hist {
 		hst.handle_cache();
 		let fname = cfg.mk_path("dist.txt");
-		let mut summ_wrt = compress_io::compress::CompressIo::new().path(fname).bufwriter()?;
+		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		hst.print_table(&mut summ_wrt, samples)?;
 	}
 	
@@ -133,7 +134,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 
 	if let Some(mut hm) = heatmaps {
 		let fname = cfg.mk_path("heatmaps.txt");
-		let mut summ_wrt = compress_io::compress::CompressIo::new().path(fname).bufwriter()?;
+		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		hm.print_table(&mut summ_wrt, samples, cfg.blank_lines())?;
 	}
 	Ok(())

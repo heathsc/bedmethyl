@@ -345,7 +345,11 @@ impl Config {
 	pub fn sample_info(&self) -> &SampleInfo { &self.sample_info }
 
 	pub fn mk_path(&self, name: &str) -> PathBuf {
-		let mut fname = PathBuf::from(format!("{}_{}", self.prefix(), name));
+		let mut s = format!("{}_{}", self.prefix(), name);
+		if self.compress() && !s.ends_with(".gz") {
+			s.push_str(".gz")
+		}
+		let mut fname = PathBuf::from(s);
 		if let Some(d) = self.dir() {
 			fname = d.join(&fname);
 		}
