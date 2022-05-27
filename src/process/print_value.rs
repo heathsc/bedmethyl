@@ -148,7 +148,11 @@ pub(super) fn get_print_value(cfg: &Config) -> io::Result<Option<Box<dyn PrintVa
 		let mut wrt = Vec::new();
 		for s in cfg.merge_outputs().expect("No outputs").iter() {
 			debug!("Opening output file {:?} with compress type {:?}", s, ctype);
-			wrt.push(compress_io::compress::CompressIo::new().path(s).cthreads(CompressThreads::NPhysCores).bufwriter()?)
+			let mut c = compress_io::compress::CompressIo::new();
+			if let Some(ct) = ctype {
+				c.ctype(ct).cthreads(CompressThreads::NPhysCores);
+			}
+			wrt.push(c.path(s).bufwriter()?)
 		}
 		let delim = match mo.value_delim() {
 			ValueDelim::Space => ' ',
