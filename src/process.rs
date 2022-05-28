@@ -61,7 +61,7 @@ pub fn process(cfg: &Config, mut hts_vec: Vec<Hts>) -> anyhow::Result<()> {
 		// If multiple read threads are used, set up merge thread
 		let mut merge_task = if nthr > 1 {
 			Some(
-				scope.spawn(move |_| { reader::merge_thread(channels, out_tx)})
+				scope.spawn(move |_| { reader::merge_thread(cfg, channels, out_tx)})
 			)
 		} else {
 			drop(out_tx);

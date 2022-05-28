@@ -76,8 +76,10 @@ fn handle_common(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, V
 	}		
 
 	cfg.set_prefix(m.value_of("prefix").unwrap());
-		
+
 	cfg.set_combine_cpgs(!m.is_present("no_combine_cpgs"));
+
+	cfg.set_assume_cpg(!m.is_present("assume_cpg"));
 
 	cfg.set_kde(!m.is_present("no_kde"));
 	if let Some(s) = m.value_of("bins") {

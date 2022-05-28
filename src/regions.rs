@@ -145,7 +145,6 @@ impl <'a> Reg<'a> {
 	fn from_region_str(s: &'a str) -> Option<Self> {
 		if let Some((cap, quoted)) = RE_REGION1.captures(s)
 			.map(|c| (c, true)).or_else(|| RE_REGION2.captures(s).map(|c| (c, false))) {
-			debug!("{:?} {:?} {:?} {}", cap.get(1), cap.get(2), cap.get(2), quoted);
 			match (cap.get(1), cap.get(2), cap.get(3)) {
 				(Some(c), None, None) => Some(Reg::Chrom(c.as_str(), quoted)),
 				(Some(c), Some(p), None) => parse_usize_with_commas(p.as_str()).map(|x| Reg::Open(c.as_str(), x, quoted)),

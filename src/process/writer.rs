@@ -93,7 +93,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 	
 	if cfg.summary() {
 	// Write out sample summary statistics
-		let fname = cfg.mk_path("sample_stats.txt");
+		let fname = cfg.mk_path("sample_stats.txt", false);
 		debug!("Writing out sample statistics to {:?}", fname);
 		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 
@@ -101,13 +101,14 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 		for st in stats.iter() {
 			writeln!(summ_wrt, "{}", st)?;
 		}
-		
-		// Write out site summary statistics
-		let fname = cfg.mk_path("site_stats.txt");
-		debug!("Writing out site statistics to {:?}", fname);
-		let mut summ_wrt = BufWriter::new(File::create(fname)?);
-		
-		site_stats.write_report(&mut summ_wrt)?;
+
+		if samples.len() > 1 {
+			// Write out site summary statistics
+			let fname = cfg.mk_path("site_stats.txt", false);
+			debug!("Writing out site statistics to {:?}", fname);
+			let mut summ_wrt = BufWriter::new(File::create(fname)?);
+			site_stats.write_report(&mut summ_wrt)?;
+		}
 	}
 
 	// Write out similarity matrix if required
@@ -116,7 +117,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 			SimilarityType::Distance => "distance.txt",
 			SimilarityType::Correlation => "corr.txt",
 			SimilarityType::Covariance => "covar.txt",
-		});
+		}, false);
 		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		dist.print_table(&mut summ_wrt, samples)?;
 	}
@@ -125,7 +126,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 
 	if let Some(mut hst) = hist {
 		hst.handle_cache();
-		let fname = cfg.mk_path("dist.txt");
+		let fname = cfg.mk_path("dist.txt", false);
 		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		hst.print_table(&mut summ_wrt, samples)?;
 	}
@@ -133,9 +134,11 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 	// Write out heatmap data if required
 
 	if let Some(mut hm) = heatmaps {
-		let fname = cfg.mk_path("heatmaps.txt");
-		let mut summ_wrt = BufWriter::new(File::create(fname)?);
-		hm.print_table(&mut summ_wrt, samples, cfg.blank_lines())?;
+		if samples.len() > 1 {
+			let fname = cfg.mk_path("heatmaps.txt", false);
+			let mut summ_wrt = BufWriter::new(File::create(fname)?);
+			hm.print_table(&mut summ_wrt, samples, cfg.blank_lines())?;
+		}
 	}
 	Ok(())
 }

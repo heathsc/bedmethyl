@@ -155,31 +155,31 @@ impl MergeOutput {
 				match self.output_type {
 					OutputType::NonconvConv => {
 						if split {
-							v.push(cfg.mk_path("non_conv.txt"));
-							v.push(cfg.mk_path("conv.txt"));
+							v.push(cfg.mk_path("non_conv.txt", true));
+							v.push(cfg.mk_path("conv.txt", true));
 						} else {
-							v.push(cfg.mk_path("nconv_conv.txt"));
+							v.push(cfg.mk_path("nconv_conv.txt", true));
 						}
 					},
 					OutputType::NonconvCov => {
 						if split {
-							v.push(cfg.mk_path("non_conv.txt"));
-							v.push(cfg.mk_path("cov.txt"));
+							v.push(cfg.mk_path("non_conv.txt", true));
+							v.push(cfg.mk_path("cov.txt", true));
 						} else {
-							v.push(cfg.mk_path("nconv_cov.txt"));
+							v.push(cfg.mk_path("nconv_cov.txt", true));
 						}
 					},					
 					OutputType::MethCov => {
 						if split {
-							v.push(cfg.mk_path("meth.txt"));
-							v.push(cfg.mk_path("cov.txt"));
+							v.push(cfg.mk_path("meth.txt", true));
+							v.push(cfg.mk_path("cov.txt", true));
 						} else {
-							v.push(cfg.mk_path("meth_cov.txt"));
+							v.push(cfg.mk_path("meth_cov.txt", true));
 						}
 					},
 					OutputType::Meth => {
 						assert!(!split);
-						v.push(cfg.mk_path("meth.txt"));
+						v.push(cfg.mk_path("meth.txt", true));
 					},					
 				};
 			},
@@ -205,6 +205,7 @@ pub struct ConfigCore {
 	// Options for merge subcommand
 	merge_output: Option<MergeOutput>,
 	combine_cpgs: bool,
+	assume_cpg: bool,
 	compress: bool,
 
 	// Options for similarity subcommand
@@ -277,8 +278,10 @@ impl Config {
 	}
 
 	pub fn set_compress(&mut self, compress: bool) { self.core.compress = compress }
-		
+
 	pub fn set_combine_cpgs(&mut self, combine: bool) {	self.core.combine_cpgs = combine }
+
+	pub fn set_assume_cpg(&mut self, assume: bool) {	self.core.assume_cpg = assume }
 	
 	pub fn set_summary(&mut self, summary: bool) { self.core.summary = summary }
 
@@ -340,13 +343,15 @@ impl Config {
 
 	pub fn combine_cpgs(&self) -> bool { self.core.combine_cpgs }
 
+	pub fn assume_cpg(&self) -> bool { self.core.assume_cpg }
+
 	pub fn n_samples(&self) -> usize { self.sample_info.n_samples() }
 
 	pub fn sample_info(&self) -> &SampleInfo { &self.sample_info }
 
-	pub fn mk_path(&self, name: &str) -> PathBuf {
+	pub fn mk_path(&self, name: &str, add_suffix: bool) -> PathBuf {
 		let mut s = format!("{}_{}", self.prefix(), name);
-		if self.compress() && !s.ends_with(".gz") {
+		if add_suffix && self.compress() && !s.ends_with(".gz") {
 			s.push_str(".gz")
 		}
 		let mut fname = PathBuf::from(s);

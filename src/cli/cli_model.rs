@@ -76,6 +76,11 @@ pub(super) fn cli_model() -> ArgMatches {
             .help("Do not combine +/- strand entries for CpGs")
       )
       .arg(
+         Arg::new("assume_cpg")
+            .long("assume-cpg").global(true)
+            .help("Assume all records are in CpG context")
+      )
+      .arg(
          Arg::new("threads")
             .short('t').long("threads").global(true)
             .takes_value(true).value_name("INT")

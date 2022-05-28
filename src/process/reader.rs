@@ -51,7 +51,7 @@ lazy_static!{
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum Strand {
+pub enum Strand {
 	Plus, Minus, Any
 }
 
@@ -92,6 +92,7 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 					(Strand::Plus, Some(true)) | (Strand::Plus, None) => self.pending = Some(prec),
 					(Strand::Minus, Some(true)) => {
 						prec.pos -= 1;
+						prec.strand = Strand::Plus;
 						prec.two_base = true;
 						return Ok(self.set_current(prec))
 					},
@@ -123,6 +124,9 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 					prec.two_base = true;
 				} else {
 					self.pending = Some(rec);
+					if prec.strand == Strand::Plus { // && prec.cg == Some(true) {
+						prec.two_base = true;
+					}
 				}
 				return Ok(self.set_current(prec))
 			} else {
@@ -132,7 +136,10 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 		// We only get here if we are the end of the input
 		if let Some(mut rec) = self.pending.take() {
 			if rec.cg == Some(true) {
-				if rec.strand == Strand::Minus { rec.pos -= 1 }
+				if rec.strand == Strand::Minus {
+					rec.strand = Strand::Plus;
+					rec.pos -= 1
+				}
 				rec.two_base = true;
 			}
 			return Ok(self.set_current(rec))
@@ -216,6 +223,7 @@ pub struct MultiRecord {
 	pub reg_idx: u32,
 	pub pos: usize,
 	pub two_base: bool,
+	pub strand: Strand,
 	pub counts: Vec<Counts>,
 	pub imp_counts: Option<Vec<ImpCounts>>,
 }
@@ -255,31 +263,47 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 	loop {
 		// Find left most entry amongst all files
 		let mut curr = None;
+		let mut two_base = false;
 		for ifile in ifiles.iter_mut() {
 			if let Some(rec) = ifile.update()? {
-				if let Some((idx, x)) = curr {
+				if let Some((idx, x, _)) = curr {
 					if idx > rec.reg_idx || (idx == rec.reg_idx && x > rec.pos) {
-						curr = Some((rec.reg_idx, rec.pos))
+						curr = Some((rec.reg_idx, rec.pos, rec.strand));
+						two_base = rec.two_base
+					} else if idx == rec.reg_idx && x == rec.pos {
+						two_base = two_base || rec.two_base
 					}
 				} else {
-					curr = Some((rec.reg_idx, rec.pos))
+					curr = Some((rec.reg_idx, rec.pos, rec.strand));
+					two_base = rec.two_base
 				}
 			}
 		}
 		// Create MultiRecord from matching individual records
 
-		if let Some((idx, x)) = curr {
+		if let Some((idx, x, strand)) = curr {
 			let mut counts = Vec::with_capacity(nf);
-			let mut two_base = false;
 			for ifile in ifiles.iter_mut() {
-				if let Some(rec) = ifile.current.take().and_then(|r| if r.reg_idx == idx && r.pos == x {
-					Some(r)
-				} else {
-					ifile.set_current(r);
-					None
+				if let Some(rec) = ifile.current.take().and_then(|mut r| {
+					if r.reg_idx == idx {
+						if r.pos == x {
+							Some(r)
+						} else if two_base && strand == Strand::Plus && r.pos == x + 1 && r.strand == Strand::Minus {
+							// Recover partially observed CpGs where we only have the minus strand
+							r.pos -= 1;
+							r.two_base = true;
+							r.strand = Strand::Plus;
+							Some(r)
+						} else {
+							ifile.set_current(r);
+							None
+						}
+					} else {
+						ifile.set_current(r);
+						None
+					}
 				}){
 					counts.push(rec.counts);
-					two_base = two_base || rec.two_base;
 				} else {
 					counts.push(Counts::default())
 				}
@@ -289,6 +313,7 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 				pos: x,
 				counts,
 				two_base,
+				strand,
 				imp_counts: None,
 			};
 			rec_vec.push_back(mrec);
@@ -339,7 +364,7 @@ impl Channel {
 	}
 }
 
-pub(super) fn merge_thread(mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut sender: Sender<MsgBlock>)-> anyhow::Result<()> {
+pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut sender: Sender<MsgBlock>)-> anyhow::Result<()> {
 
 	debug!("Starting merge thread");
 
@@ -349,28 +374,43 @@ pub(super) fn merge_thread(mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut s
 	let mut rec_vec = VecDeque::with_capacity(BLOCK_SIZE);
 	loop {
 		let mut curr = None;
+		let mut two_base = cfg.combine_cpgs() && cfg.assume_cpg();
 		for chan in channels.iter_mut() {
 			if let Some(rec) = chan.update() {
-				if let Some((idx, x)) = curr {
+				if let Some((idx, x, _)) = curr {
 					if idx > rec.reg_idx || (idx == rec.reg_idx && x > rec.pos) {
-						curr = Some((rec.reg_idx, rec.pos))
+						curr = Some((rec.reg_idx, rec.pos, rec.strand));
+						two_base = rec.two_base
+					} else if idx == rec.reg_idx && x == rec.pos {
+						two_base = two_base || rec.two_base
 					}
 				} else {
-					curr = Some((rec.reg_idx, rec.pos))
+					curr = Some((rec.reg_idx, rec.pos, rec.strand));
+					two_base = rec.two_base
 				}
 			}
 		}
-		if let Some((idx,x)) = curr {
+		if let Some((idx,x, strand)) = curr {
 			let mut counts: Vec<Counts> = Vec::new();
-			let mut two_base = false;
 			for chan in channels.iter_mut() {
-				if let Some(rec) = chan.curr_rec.take().and_then(|r| if r.reg_idx == idx && r.pos == x {
-					Some(r)
-				} else {
-					chan.curr_rec = Some(r);
-					None
+				if let Some(rec) = chan.curr_rec.take().and_then(|mut r| {
+					if r.reg_idx == idx {
+						if r.pos == x {
+							Some(r)
+						} else if two_base && strand == Strand::Plus && r.pos == x + 1 && r.strand == Strand::Minus {
+							r.pos -= 1;
+							r.two_base = true;
+							r.strand = Strand::Plus;
+							Some(r)
+						} else {
+							chan.curr_rec = Some(r);
+							None
+						}
+					} else {
+						chan.curr_rec = Some(r);
+						None
+					}
 				}) {
-					two_base = two_base || rec.two_base;
 					let MultiRecord { counts: mut cn, .. } = rec;
 					counts.append(&mut cn)
 				} else {
@@ -382,6 +422,7 @@ pub(super) fn merge_thread(mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut s
 				pos: x,
 				two_base,
 				counts,
+				strand,
 				imp_counts: None,
 			};
 			rec_vec.push_back(mrec);
