@@ -131,7 +131,7 @@ pub(super) fn cli_model() -> ArgMatches {
                   .takes_value(true).value_name("FILE")
                   .multiple_values(true).require_value_delimiter(true)
                   .max_values(2)
-                  .help("Set output directory [default: current directory]")
+                  .help("Set merged output files names")
             )
             .arg(
                Arg::new("output_type")
@@ -141,7 +141,7 @@ pub(super) fn cli_model() -> ArgMatches {
                   .ignore_case(true).default_value("non_conv-conv")
                   .help("Set output type")
             )
-            // tab, space, comma, semicolon
+            // tab, space, comma, semicolon, slash
             .arg(
                Arg::new("value_delim")
                   .short('D').long("value-delim")
@@ -207,6 +207,37 @@ pub(super) fn cli_model() -> ArgMatches {
                   .help("Do not generate blank lines between iso-lines")
             )
             .arg(
+               Arg::new("smooth")
+                  .long("smooth")
+                  .help("Generate smoothed counts using local regression")
+            )
+            .arg(
+               Arg::new("window_size")
+                  .long("window-size")
+                  .takes_value(true).value_name("BASE PAIRS").default_value("1000")
+                  .help("Minimum window size for smoothing")
+            )
+            .arg(
+               Arg::new("min_sites")
+                  .long("min-sites")
+                  .takes_value(true).value_name("INT").default_value("70")
+                  .help("Minimum number of observed sites in window for smoothing")
+            )
+            .arg(
+               Arg::new("max_distance")
+                  .long("max-distance")
+                  .takes_value(true).value_name("BASE PAIRS").default_value("50000")
+                  .help("Maximum distance between adjacent observed sites for smoothing (0 = no limit)")
+            )
+            .arg(
+               Arg::new("smooth_output_type")
+                  .long("smooth-output-type")
+                  .takes_value(true).value_name("OUTPUT TYPE")
+                  .possible_values(&["non_conv-conv", "non_conv-cov", "meth-cov", "meth"])
+                  .ignore_case(true).default_value("non_conv-conv")
+                  .help("Set output type")
+            )
+            .arg(
                Arg::new("sample_file")
                   .takes_value(true).value_name("FILE")
                   .help("Sample input file [default: <stdin>]")
@@ -265,6 +296,55 @@ pub(super) fn cli_model() -> ArgMatches {
                Arg::new("no_blank_lines")
                   .short('B').long("no_blank_lines")
                   .help("Do not generate blank lines between iso-lines")
+            )
+            .arg(
+               Arg::new("sample_file")
+                  .takes_value(true).value_name("FILE")
+                  .help("Sample input file [default: <stdin>]")
+            )
+      )
+      .subcommand(
+         Command::new("smooth")
+            .about("Generate smoothed counts using local regression")
+            .arg(
+               Arg::new("window_size")
+                  .long("window-size")
+                  .takes_value(true).value_name("BASE PAIRS").default_value("1000")
+                  .help("Minimum window size for smoothing")
+            )
+            .arg(
+               Arg::new("min_sites")
+                  .long("min-sites")
+                  .takes_value(true).value_name("INT").default_value("70")
+                  .help("Minimum number of observed sites in window for smoothing")
+            )
+            .arg(
+               Arg::new("max_distance")
+                  .long("max-distance")
+                  .takes_value(true).value_name("BASE PAIRS").default_value("50000")
+                  .help("Maximum distance between adjacent observed sites for smoothing (0 = no_limit)")
+            )
+            .arg(
+               Arg::new("smooth_output_type")
+                  .long("smooth-output-type")
+                  .takes_value(true).value_name("OUTPUT TYPE")
+                  .possible_values(&["non_conv-conv", "non_conv-cov", "meth-cov", "meth"])
+                  .ignore_case(true).default_value("non_conv-conv")
+                  .help("Set output type")
+            )
+            // tab, space, comma, semicolon, slash
+            .arg(
+               Arg::new("value_delim")
+                  .short('D').long("value-delim")
+                  .takes_value(true).value_name("DELIM")
+                  .possible_values(&["tab", "space", "comma", "semicolon", "slash"])
+                  .ignore_case(true).default_value("tab")
+                  .help("Set value delimiter")
+            )
+            .arg(
+               Arg::new("round_counts")
+                  .long("round-counts")
+                  .help("Round smoothed counts")
             )
             .arg(
                Arg::new("sample_file")

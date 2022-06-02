@@ -13,6 +13,7 @@ mod print_value;
 mod distance;
 mod hist;
 mod heatmaps;
+mod smooth;
 
 use crate::config::*;
 use crate::process::reader::MultiRecord;

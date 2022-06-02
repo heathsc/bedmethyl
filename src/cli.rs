@@ -102,11 +102,12 @@ fn merge_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<H
 	} else {
 		msub.value_of("value_delim").map(ValueDelim::from_str).flatten()
 	};
+
 	let output_type = msub.value_of("output_type").map(OutputType::from_str).flatten();
 
-	cfg.set_compress(msub.is_present("compress"));
-
 	cfg.set_merge_outputs(output_type, value_delim, msub.values_of("output_names"));
+
+	cfg.set_compress(msub.is_present("compress"));
 
 	cfg.set_summary(!msub.is_present("no_summary"));
 
@@ -119,7 +120,13 @@ fn merge_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<H
 	if msub.is_present("heatmaps") {
 		handle_heatmaps_opts(&mut cfg, msub)?
 	}
-	
+
+	if msub.is_present("smooth") {
+		handle_smooth_opts(&mut cfg, msub)?
+	} else {
+
+	}
+
 	Ok((cfg, hts_vec))
 }
 
@@ -170,6 +177,28 @@ fn handle_heatmaps_opts(cfg: &mut Config, msub: &ArgMatches) -> anyhow::Result<(
 
 	cfg.set_heatmaps(true);
 	
+	Ok(())
+}
+
+fn handle_smooth_opts(cfg: &mut Config, msub: &ArgMatches) -> anyhow::Result<()> {
+
+	// Handle heatmaps options
+	cfg.set_window_size(parse::<NonZeroUsize>(msub.value_of("window_size").unwrap())?);
+	cfg.set_min_sites(parse::<NonZeroUsize>(msub.value_of("min_sites").unwrap())?);
+	cfg.set_max_distance(parse::<usize>(msub.value_of("max_distance").unwrap())?);
+
+	let value_delim = if msub.is_present("split_output") {
+		Some(ValueDelim::Split)
+	} else {
+		msub.value_of("value_delim").map(ValueDelim::from_str).flatten()
+	};
+
+	let output_type = msub.value_of("smooth_output_type").map(OutputType::from_str).flatten();
+
+	cfg.set_smooth_outputs(output_type, value_delim);
+
+	cfg.set_smooth(true);
+
 	Ok(())
 }
 

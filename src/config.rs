@@ -224,6 +224,14 @@ pub struct ConfigCore {
 	heatmaps: bool,
 	blank_lines: bool,
 	heatmaps_full_limit: u8, // Limit on a or b
+
+	// Options for smoothing
+	smooth: bool,
+	round_counts: bool,
+	window_size: usize,
+	min_sites: usize,
+	max_distance: usize,
+	smooth_output: Option<MergeOutput>,
 }
 
 pub struct Config {
@@ -244,8 +252,14 @@ impl Config {
 		if self.core.merge_output.is_none() {
 			self.core.merge_output = Some(MergeOutput::new(output_type, value_delim))
 		}	
-	}	
-		
+	}
+
+	pub fn set_smooth_outputs(&mut self, output_type: Option<OutputType>, value_delim: Option<ValueDelim>) {
+		if self.core.smooth_output.is_none() {
+			self.core.smooth_output = Some(MergeOutput::new(output_type, value_delim))
+		}
+	}
+
 	pub fn set_merge_outputs<P: AsRef<Path>, I: IntoIterator<Item = P>>(&mut self, output_type: Option<OutputType>, value_delim: Option<ValueDelim>, outputs: Option<I>) {
 		self.mk_merge_output(output_type, value_delim);
 		let (output1, output2) = if let Some(x) = outputs {
@@ -282,7 +296,7 @@ impl Config {
 	pub fn set_combine_cpgs(&mut self, combine: bool) {	self.core.combine_cpgs = combine }
 
 	pub fn set_assume_cpg(&mut self, assume: bool) {	self.core.assume_cpg = assume }
-	
+
 	pub fn set_summary(&mut self, summary: bool) { self.core.summary = summary }
 
 	pub fn set_kde(&mut self, kde: bool) { self.core.kde = kde }
@@ -294,6 +308,16 @@ impl Config {
 	pub fn set_blank_lines(&mut self, x: bool) { self.core.blank_lines = x }
 
 	pub fn set_n_bins(&mut self, n: NonZeroUsize) { self.core.n_bins = Some(n) }
+
+	pub fn set_smooth(&mut self, x: bool) { self.core.smooth = x }
+
+	pub fn set_round_counts(&mut self, x: bool) { self.core.round_counts = x }
+
+	pub fn set_window_size(&mut self, n: NonZeroUsize) { self.core.window_size = usize::from(n) }
+
+	pub fn set_min_sites(&mut self, n: NonZeroUsize) { self.core.min_sites = usize::from(n) }
+
+	pub fn set_max_distance(&mut self, n: usize) { self.core.max_distance = n }
 
 	pub fn set_kde_cache_limit(&mut self, n: u16) { self.core.kde_cache_limit = n }
 
@@ -334,6 +358,16 @@ impl Config {
 	pub fn heatmaps(&self) -> bool { self.core.heatmaps }
 
 	pub fn blank_lines(&self) -> bool { self.core.blank_lines }
+
+	pub fn smooth(&self) -> bool { self.core.smooth }
+
+	pub fn round_counts(&self) -> bool { self.core.round_counts }
+
+	pub fn window_size(&self) -> usize { self.core.window_size }
+
+	pub fn min_sites(&self) -> usize{ self.core.min_sites }
+
+	pub fn max_distance(&self) -> usize{ self.core.max_distance }
 
 	pub fn kde(&self) -> bool { self.core.kde }
 

@@ -15,8 +15,8 @@ use crate::{
 };
 
 use super::{
-	BLOCK_SIZE,
-	MsgBlock,
+	BLOCK_SIZE, MsgBlock,
+	smooth::*,
 };
 
 use crate::sample::Sample;
@@ -59,12 +59,13 @@ fn send_block(blk: MsgBlock, tx: &mut Sender<MsgBlock>) -> anyhow::Result<()> {
 	tx.send(blk).with_context(|| "Error sending block")
 }
 
-struct InputFile<'a, 'b, 'c> {
+pub(crate) struct InputFile<'a, 'b, 'c> {
 	trec: TbxRec,
 	iter: HtsItrReader<'a, 'b, TbxRec>,
 	pending: Option<Record>,
 	current: Option<Record>,
 	sample: &'c Sample,
+	smooth: Option<SmoothFile>,
 	line: usize,
 	merge_strands: bool,
 	eof: bool,
@@ -74,7 +75,14 @@ struct InputFile<'a, 'b, 'c> {
 impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 
 	fn update(&mut self) -> anyhow::Result<Option<&Record>> {
-		if self.current.is_none() { self.read_rec()?; }
+		if self.current.is_none() {
+			if let Some(mut sm) = self.smooth.take() {
+				self.current = sm.get_rec(self)?;
+				self.smooth = Some(sm);
+			} else {
+				self.current = self.read_rec()?
+			}
+		}
 		Ok(self.current.as_ref())
 	}
 
@@ -82,7 +90,7 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 		self.current = Some(rec);
 	}
 
-	fn read_rec(&mut self) -> anyhow::Result<()> {
+	pub(super) fn read_rec(&mut self) -> anyhow::Result<Option<Record>> {
 
 		while !self.eof {
 
@@ -94,9 +102,9 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 						prec.pos -= 1;
 						prec.strand = Strand::Plus;
 						prec.two_base = true;
-						return Ok(self.set_current(prec))
+						return Ok(Some(prec))
 					},
-					_ => 	return Ok(self.set_current(prec)),
+					_ => 	return Ok(Some(prec)),
 				}
 			}
 
@@ -112,7 +120,7 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 			let rec = Record::from_tbx_record(&self.trec, idx, &mut self.format_bug)
 				.with_context(|| format!("Error reading from {}:{}", self.sample.path().display(), self.line))?;
 			if !self.merge_strands {
-				return Ok(self.set_current(rec))
+				return Ok(Some(rec))
 			}
 
 			// If we are merging strands for CpGs we have to see if we have two records from the same CpG
@@ -128,7 +136,7 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 						prec.two_base = true;
 					}
 				}
-				return Ok(self.set_current(prec))
+				return Ok(Some(prec))
 			} else {
 				self.pending = Some(rec)
 			}
@@ -142,19 +150,20 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 				}
 				rec.two_base = true;
 			}
-			return Ok(self.set_current(rec))
+			return Ok(Some(rec))
 		} else {
 			self.current = None;
 		}
-		Ok(())
+		Ok(None)
 	}
 }
 
 #[derive(Debug, Copy, Clone)]
-struct Record {
-	reg_idx: u32, // Index into cfg.regions
-	counts: Counts,
-	pos: usize,
+pub(super) struct Record {
+	pub(super) reg_idx: u32, // Index into cfg.regions
+	pub(super) counts: Counts,
+	pub(super) smooth_fit: Option<SmoothFit>,
+	pub(super) pos: usize,
 	strand: Strand,
 	cg: Option<bool>,
 	two_base: bool,
@@ -203,6 +212,7 @@ impl Record {
 				Ok(Record{
 					reg_idx,
 					counts: Counts { non_converted, converted },
+					smooth_fit: None,
 					pos: (trec.begin() + 1) as usize,
 					strand,
 					cg,
@@ -247,16 +257,22 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 	let samples = cfg.sample_info().samples();
 	// Make InputFile structs
 	let mut ifiles: Vec<_> = hts_vec.iter_mut().zip(reg_vec.iter()).enumerate()
-		.map(|(k, (h, rlist))| InputFile {
-			trec: TbxRec::new(),
-			iter: h.itr_reader(rlist),
-			pending: None,
-			current: None,
-			sample: &samples[k + sample_idx],
-			line: 0,
-			merge_strands,
-			eof: false,
-			format_bug: None,
+		.map(|(k, (h, rlist))| {
+			let smooth = if cfg.smooth() {
+				Some(SmoothFile::new(cfg.min_sites(), cfg.max_distance(), cfg.window_size()))
+			} else { None };
+			InputFile {
+				trec: TbxRec::new(),
+				iter: h.itr_reader(rlist),
+				pending: None,
+				current: None,
+				sample: &samples[k + sample_idx],
+				line: 0,
+				smooth,
+				merge_strands,
+				eof: false,
+				format_bug: None,
+			}
 		}).collect();
 
 	let mut rec_vec = VecDeque::with_capacity(BLOCK_SIZE);
