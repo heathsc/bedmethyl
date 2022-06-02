@@ -52,12 +52,10 @@ impl SmoothFile {
 
             SmState::Finished => {
                assert!(self.data.is_empty());
-               trace!("State: Finished");
                return Ok(None)
             },
 
             SmState::Draining => {
-               trace!("State: Draining");
                if let Some(rec) = self.data.pop_front() {
                   return Ok(Some(rec))
                } else {
@@ -66,7 +64,6 @@ impl SmoothFile {
             },
 
             SmState::Filling => {
-               trace!("State: Filling");
                if self.try_add_record(f)? && self.range_ok() {
                   self.impute();
                   self.state = SmState::InBlock
@@ -74,7 +71,6 @@ impl SmoothFile {
             },
 
             SmState::InBlock => {
-               trace!("State: InBlock");
                // Trim left end of block if possible
                if self.data.len() > self.n_sites && self.curr_idx > 0 && self.data[self.curr_idx].pos - self.data[1].pos >= self.bandwidth {
                   self.curr_idx -= 1;
@@ -117,7 +113,7 @@ impl SmoothFile {
       let r1 = self.data.back().unwrap();
       let rix = &self.data[self.curr_idx];
 
-      debug!("Impute: {}:{} {}:{}-{}:{} left: {} {}, right: {} {}, ns: {}",
+      trace!("Impute: {}:{} {}:{}-{}:{} left: {} {}, right: {} {}, ns: {}",
          rix.reg_idx, rix.pos, r0.reg_idx, r0.pos, r1.reg_idx, r1.pos,
          self.curr_idx, rix.pos - r0.pos,
          self.data.len() - self.curr_idx, r1.pos - rix.pos,
@@ -156,11 +152,9 @@ impl SmoothFile {
    }
 
    fn try_add_record(&mut self, f: &mut InputFile) -> anyhow::Result<bool> {
-      trace!("try_add_record");
 
       Ok(if let Some(rec) = self.check_next_rec(f)? {
          self.data.push_back(rec);
-         trace!("try_add_record - got new record.  State = {:?}", self.state);
          true
       } else {
          self.drain();

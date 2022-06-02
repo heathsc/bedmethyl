@@ -37,6 +37,12 @@ impl AddAssign for Counts {
 	}
 }
 
+impl Counts {
+	pub fn is_zero(&self) -> bool {
+		self.non_converted + self.converted == 0
+	}
+}
+
 /// Imputed counts (if smoothing is used)
 #[derive(Debug, Copy, Clone, Default)]
 pub struct ImpCounts {
@@ -90,7 +96,19 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 		self.current = Some(rec);
 	}
 
+	// Skip over records that have zero counts (not observed)
 	pub(super) fn read_rec(&mut self) -> anyhow::Result<Option<Record>> {
+		loop {
+			if let Some(rec) = self._read_rec()? {
+				if rec.is_observed() { return Ok(Some(rec)) }
+			} else {
+				return Ok(None)
+			}
+		}
+	}
+
+
+	fn _read_rec(&mut self) -> anyhow::Result<Option<Record>> {
 
 		while !self.eof {
 
@@ -119,6 +137,7 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 
 			let rec = Record::from_tbx_record(&self.trec, idx, &mut self.format_bug)
 				.with_context(|| format!("Error reading from {}:{}", self.sample.path().display(), self.line))?;
+
 			if !self.merge_strands {
 				return Ok(Some(rec))
 			}
@@ -170,6 +189,8 @@ pub(super) struct Record {
 }
 
 impl Record {
+	pub(super) fn is_observed(&self) -> bool { !self.counts.is_zero() }
+
 	fn from_tbx_record(trec: &TbxRec, reg_idx: u32, format_bug: &mut Option<bool>) -> anyhow::Result<Self> {
 
 		let mut it = trec.to_str().expect("Null tbx record").trim_end().split('\t');
