@@ -138,14 +138,14 @@ impl PrintValue for Meth {
 	fn print_str(&mut self, s: &str) -> io::Result<()> { write!(self.wrt, "{}", s) }
 }
 
-pub(super) fn get_print_value(cfg: &Config) -> io::Result<Option<Box<dyn PrintValue>>> {
-	Ok(if let Some(mo) = cfg.merge_output() {
-
+pub(super) fn get_print_value(cfg: &Config, smooth: bool) -> io::Result<Option<Box<dyn PrintValue>>> {
+	let x = if smooth { cfg.smooth_output() } else { cfg.merge_output() };
+	Ok(if let Some(mo) = x {
 		// Compression mode
 		let mode = if cfg.compress() { "wz" } else { "w" };
 		let mut wrt = Vec::new();
 
-		for s in cfg.merge_outputs().expect("No outputs").iter() {
+		for s in cfg.outputs(smooth).expect("No outputs").iter() {
 			debug!("Opening output file {:?} ", s);
 			let h = Hts::open(s, mode)?;
 			let mut w = OwnedWriter::new(h)?;
@@ -154,14 +154,7 @@ pub(super) fn get_print_value(cfg: &Config) -> io::Result<Option<Box<dyn PrintVa
 			}
 			wrt.push(BufWriter::new(w))
 		}
-
-		let delim = match mo.value_delim() {
-			ValueDelim::Space => ' ',
-			ValueDelim::Comma => ',',
-			ValueDelim::Semicolon => ';',
-			_ => '\t',
-		};
-
+		
 		let output_type = mo.output_type();
 		Some(if wrt.len() > 1 {
 			match output_type {
@@ -172,6 +165,7 @@ pub(super) fn get_print_value(cfg: &Config) -> io::Result<Option<Box<dyn PrintVa
 			}
 		} else {
 			let w = wrt.into_iter().next().unwrap();
+			let delim = mo.value_delim().get_delim_char();
 			match output_type {
 				OutputType::NonconvConv => Box::new(NonconvConv{wrt: w, delim}),
 				OutputType::NonconvCov => Box::new(NonconvCov{wrt: w, delim}),

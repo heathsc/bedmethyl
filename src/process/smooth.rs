@@ -4,14 +4,46 @@ use std::{
 
 use anyhow::Context;
 
-use super::reader::{Record, Counts, InputFile};
+use super::reader::{Record, Counts, ImpCounts, InputFile};
+
+const TRICUBE_CONST: f64 = 70.0 / 81.0;
+// Used to bound the methylation away from 0 or 1
+const FIT_CONST: f64 = 0.1;
 
 /// Results of fitting smoothing curve
 #[derive(Debug, Copy, Clone, Default)]
 pub struct SmoothFit {
    effects: [f64; 3], // [a0, a1, a2]: we fit a local quadratic, so y = a0 + a1 * x + a2 * x^2
    cov: [f64; 6], // Var-cov matrix (lower triangle) for effect estimates
+   pub(super) bandwidth: f64,
+   pub(super) pos: usize,
 }
+
+impl SmoothFit {
+   pub(super) fn impute(&self, pos: usize) -> ImpCounts {
+      let eff = &self.effects;
+      let cov = &self.cov;
+      let (z, var) = if pos == self.pos {
+         (eff[0], cov[0])
+      } else {
+         let x = ((pos as f64) - (self.pos as f64))  / self.bandwidth;
+         let x2 = x * x;
+         (
+            eff[0] + x * eff[1] + x2 * eff[2],
+            cov[0] + x * cov[1] + x2 * cov[3]
+            + x * (cov[1] + x * cov[2] + x2 * cov[4])
+            + x2 * (cov[3] + x * cov[4] + x2 * cov[5])
+         )
+      };
+      let m = (z.sin() + 1.0) * 0.5;
+      let n = 1.0 / var;
+      ImpCounts {
+         non_converted: m * n,
+         converted: (1.0 - m) * n,
+      }
+   }
+}
+
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum SmState {
@@ -28,6 +60,7 @@ pub(super) struct SmoothFile {
    curr_idx: usize,
    cache: Option<Record>,
    data: VecDeque<Record>,
+   work: Vec<FitVal>,
    state: SmState,
    eof: bool,
 }
@@ -35,7 +68,10 @@ pub(super) struct SmoothFile {
 impl SmoothFile {
    pub(super) fn new(n_sites: usize, max_distance: usize, bandwidth: usize) -> Self {
       trace!("Setting up new SmoothFile");
-      Self { n_sites, max_distance, bandwidth, curr_idx: 0, cache: None, data: VecDeque::with_capacity(n_sites), state: SmState::Filling, eof: false }
+      Self { n_sites, max_distance, bandwidth, curr_idx: 0, cache: None,
+         data: VecDeque::with_capacity(n_sites),
+         work: Vec::with_capacity(n_sites),
+         state: SmState::Filling, eof: false }
    }
 
    fn read_rec(&mut self, f: &mut InputFile) -> anyhow::Result<Option<Record>> {
@@ -59,13 +95,14 @@ impl SmoothFile {
                if let Some(rec) = self.data.pop_front() {
                   return Ok(Some(rec))
                } else {
+                  self.curr_idx = 0;
                   self.state = if self.eof { SmState::Finished } else { SmState::Filling };
                }
             },
 
             SmState::Filling => {
                if self.try_add_record(f)? && self.range_ok() {
-                  self.impute();
+                  self.fit();
                   self.state = SmState::InBlock
                }
             },
@@ -93,12 +130,12 @@ impl SmoothFile {
                         } else {
                            self.cache = Some(rec)
                         }
-                        self.impute();
+                        self.fit();
                      } else {
                         self.drain()
                      }
                   } else {
-                     self.impute();
+                     self.fit();
                   }
                }
             },
@@ -106,19 +143,82 @@ impl SmoothFile {
       }
    }
 
-   // Impute at current position
-   fn impute(&mut self) -> bool {
-      // Do imputation magic here
-      let r0 = &self.data[0];
-      let r1 = self.data.back().unwrap();
-      let rix = &self.data[self.curr_idx];
+   // Fit model at curr_idx position
+   fn fit(&mut self) -> bool {
+      assert!(self.curr_idx < self.data.len() && self.data.len() >= self.n_sites, "{} {}", self.data.len(), self.curr_idx);
+      let pos = self.data[self.curr_idx].pos;
+      let h = (self.data.back().unwrap().pos - pos).max(pos - self.data[0].pos) as f64;
+      let zpos = pos as f64;
+      self.work.clear();
+      let mut xwx = [0.0; 6]; // Lower triangle of X'WX matrix
+      let mut xwz = [0.0; 3]; // X'WZ vector
+      let mut denom = 0.0;
 
-      trace!("Impute: {}:{} {}:{}-{}:{} left: {} {}, right: {} {}, ns: {}",
-         rix.reg_idx, rix.pos, r0.reg_idx, r0.pos, r1.reg_idx, r1.pos,
-         self.curr_idx, rix.pos - r0.pos,
-         self.data.len() - self.curr_idx, r1.pos - rix.pos,
-         self.data.len()
-      );
+      // Add data to work, build up X'WX and X'YZ
+      for r in self.data.iter() {
+         let x = (((r.pos as f64) - zpos) as f64) / h;
+         let n = (r.counts.n() as f64) + 2.0 * FIT_CONST;
+         let m = ((r.counts.non_converted as f64) + FIT_CONST) / n;
+         denom += n - 1.0;
+         let val = FitVal::new(n, x, m);
+         val.accum(&mut xwx, &mut xwz);
+         self.work.push(val)
+      }
+      xwx[3] = xwx[2]; // These are both equal to Sigma w * x^2
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[0], 0.0, 0.0, xwz[0]);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[1], xwx[2], 0.0, xwz[1]);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[3], xwx[4], xwx[5], xwz[2]);
+      let c = chol(&mut xwx);
+//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", c[0], 0.0, 0.0);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[1], c[2], 0.0);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[3], c[4], c[5]);
+
+      let b = chol_solve(&c, &mut xwz);
+ //     eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", b[0], b[1], b[2]);
+
+      // Get residual SS
+      let rss: f64 = self.work.iter().map(|v| v.rss(b)).sum();
+
+      let s2 = rss / ((self.work.len() - 3) as f64);
+      let phi = ((self.work.len() as f64) * (s2 - 1.0) / denom).max(0.001).min(0.999);
+//      eprintln!("rss = {}, s2 = {}, phi = {}", rss, s2, phi);
+
+      // Update GLS matrices
+      xwx = [0.0; 6];
+      xwz = [0.0; 3];
+      for v in self.work.iter_mut() {
+         v.update_wt(v[0] / (1.0 + (v[0] - 1.0) * phi));
+         v.accum(&mut xwx, &mut xwz);
+      }
+      xwx[3] = xwx[2]; // These are both equal to Sigma w * x^2
+
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[0], 0.0, 0.0, xwz[0]);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[1], xwx[2], 0.0, xwz[1]);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[3], xwx[4], xwx[5], xwz[2]);
+      let c = chol(&mut xwx);
+//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", c[0], 0.0, 0.0);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[1], c[2], 0.0);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[3], c[4], c[5]);
+
+      let b = chol_solve(&c, &mut xwz);
+//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", b[0], b[1], b[2]);
+
+      let inv = chol_inv(c);
+//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", inv[0], 0.0, 0.0);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", inv[1], inv[2], 0.0);
+//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", inv[3], inv[4], inv[5]);
+
+//      let rss: f64 = self.work.iter().map(|v| v.rss(b)).sum();
+//      let s2 = rss / ((self.work.len() - 3) as f64);
+//      eprintln!("rss = {}, s2 = {}, phi = {}", rss, s2, phi);
+
+//      panic!("OOOOK!");
+      self.data[self.curr_idx].smooth_fit = Some(SmoothFit {
+         effects: *b,
+         cov: inv,
+         bandwidth: h,
+         pos,
+      });
 
       self.curr_idx += 1;
       self.curr_idx < self.data.len()
@@ -163,7 +263,117 @@ impl SmoothFile {
    }
 
    fn drain(&mut self) {
-      while self.impute() {};
+      while self.range_ok() {
+         assert!(self.curr_idx < self.data.len() && self.data.len() >= self.n_sites, "{} {}", self.data.len(), self.curr_idx);
+         self.fit();
+      }
       self.state = SmState::Draining;
+   }
+}
+
+// Cholesky decomposition for a 3 x 3 symmetric PD matrix
+// supplied with the lower triangle as a 6 element vector
+fn chol(x: &mut [f64; 6]) -> &[f64; 6] {
+   assert!(x[0] > 0.0, "Matrix not PD");
+   x[0] = x[0].sqrt(); // L[0,0]
+   x[1] /= x[0]; // L[1,0]
+   let z = x[2] - x[1] * x[1];
+   assert!(z > 0.0, "Matrix not PD");
+   x[2] = z.sqrt(); // L[1,1]
+   x[3] /= x[0]; // L[2,0]
+   x[4] = (x[4] - x[1] * x[3]) / x[2]; // L[2,1]
+   let z = x[5] - x[3] * x[3] - x[4] * x[4];
+   assert!(z > 0.0, "Matrix not PD");
+   x[5] = z.sqrt(); // L[2;2]
+   x
+}
+
+fn chol_solve<'a>(c: &[f64; 6], y: &'a mut [f64; 3]) -> &'a [f64; 3] {
+   let a0 = y[0] / c[0];
+   let a1 = (y[1] - c[1] * a0) / c[2];
+   let a2 = (y[2] - c[3] * a0 - c[4] * a1) / c[5];
+   y[2] = a2 / c[5];
+   y[1] = (a1 - c[4] * y[2]) / c[2];
+   y[0] = (a0 - c[3] * y[2] - c[1] * y[1]) / c[0];
+   y
+}
+
+// Calculate inverse of 3 x 3 symmetric PD matrix given
+// the cholesky decomposition (lower triangular)
+fn chol_inv(c: &[f64; 6]) -> [f64; 6] {
+   unsafe {
+      let mut inv: [f64; 6] = std::mem::uninitialized();
+      // First col
+      let a0 = 1.0 / c[0];
+      let a1 = -c[1] * a0 / c[2];
+      let a2 = (-c[3] * a0 - c[4] * a1) / c[5];
+      inv[3] = a2 / c[5];
+      inv[1] = (a1 - c[4] * inv[3]) / c[2];
+      inv[0] = (a0 - c[3] * inv[3] - c[1] * inv[1]) / c[0];
+      // Second col
+      let a1 = 1.0 / c[2];
+      let a2 = (-c[4] * a1) / c[5];
+      inv[4] = a2 / c[5];
+      inv[2] = (a1 - c[4] * inv[4]) / c[2];
+      // last col
+      inv[5] = 1.0 / (c[5] * c[5]);
+      inv
+   }
+}
+
+#[derive(Copy, Clone)]
+struct FitVal([f64;7]); // wt, x, x^2, x^3, x^4, z, tc
+
+impl FitVal {
+   fn new(wt: f64, x: f64, m: f64) -> Self {
+      let x1 = x.abs();
+      assert!(x1 <= 1.0, "x1 = {}", x1);
+      let z = x * x;
+      let z1 = 1.0 - z * x1;
+
+      // Tricube kernel
+      let tc = TRICUBE_CONST * z1 * z1 * z1;
+
+      // Transform meth value
+      let y = (2.0 * m - 1.0).asin();
+      Self([wt, x, z, x * z, z * z, y, tc])
+   }
+
+   fn accum(&self, xwx: &mut [f64; 6], xwz: &mut [f64; 3]) {
+      let w = self[0] * self[6];
+      // Accumulate lower triangle of XWX
+      xwx[0] += w; // Sigma w
+      xwx[1] += w * self[1]; // w * x
+      xwx[2] += w * self[2]; // w * x^2 - note the xwx[6] == xwx[4]
+      xwx[4] += w * self[3]; // w * x^3
+      xwx[5] += w * self[4]; // w * x^4
+      xwz[0] += w * self[5]; // w * z
+      xwz[1] += w * self[1] * self[5]; // w * x * z
+      xwz[2] += w * self[2] * self[5]; // w * x^2 * z
+   }
+
+   fn update_wt(&mut self, wt: f64) { self.0[0] = wt }
+
+   // Calculate z - X * Beta
+   fn resid(&self, beta: &[f64; 3]) -> f64 {
+      self[5] - (beta[0] + beta[1] * self[1] + beta[2] * self[2])
+//      let x = beta[0] + beta[1] * self[1] + beta[2] * self[2];
+//      let e = self[5] - x;
+//      eprintln!("{}\t{}\t{}\t{}", self[1], self[5], x, e);
+//      e
+   }
+
+   // Calculate n * (z - X * Beta)^2
+   fn rss(&self, beta: &[f64; 3]) -> f64 {
+      let e = self.resid(beta);
+      self[0] * e * e
+   }
+}
+
+impl std::ops::Deref for FitVal {
+   type Target = [f64];
+
+   fn deref(&self) -> &Self::Target {
+      &self.0
    }
 }

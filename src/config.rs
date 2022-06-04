@@ -51,6 +51,15 @@ impl ValueDelim {
 			_ => None,
 		}
 	}	
+	
+	pub fn get_delim_char(&self) -> char {
+		match self {
+			ValueDelim::Space => ' ',
+			ValueDelim::Comma => ',',
+			ValueDelim::Semicolon => ';',
+			_ => '\t',
+		}
+	}
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -125,10 +134,9 @@ impl MergeOutput {
 
 	pub fn output_type(&self) -> OutputType { self.output_type }
 	
-	fn output_paths(&self, cfg: &Config) -> Vec<PathBuf> {
+	fn output_paths(&self, cfg: &Config, smooth: bool) -> Vec<PathBuf> {
 		let mut v = Vec::new();
-		
-		
+
 		// Add directory if present
 		let add_dir = |cfg: &Config, s: &PathBuf| {
 			if let Some(d) = cfg.dir() {
@@ -148,38 +156,38 @@ impl MergeOutput {
 				assert_ne!(self.value_delim, ValueDelim::Split);
 				v.push(add_dir(cfg, s1));
 			},	
-			// No outputs provided to we build them	
+			// No outputs provided so we build them
 			_ => {
 				let split = self.value_delim == ValueDelim::Split;
 				 
 				match self.output_type {
 					OutputType::NonconvConv => {
 						if split {
-							v.push(cfg.mk_path("non_conv.txt", true));
-							v.push(cfg.mk_path("conv.txt", true));
+							v.push(cfg.mk_path("non_conv.txt", true, smooth));
+							v.push(cfg.mk_path("conv.txt", true, smooth));
 						} else {
-							v.push(cfg.mk_path("nconv_conv.txt", true));
+							v.push(cfg.mk_path("nconv_conv.txt", true, smooth));
 						}
 					},
 					OutputType::NonconvCov => {
 						if split {
-							v.push(cfg.mk_path("non_conv.txt", true));
-							v.push(cfg.mk_path("cov.txt", true));
+							v.push(cfg.mk_path("non_conv.txt", true, smooth));
+							v.push(cfg.mk_path("cov.txt", true, smooth));
 						} else {
-							v.push(cfg.mk_path("nconv_cov.txt", true));
+							v.push(cfg.mk_path("nconv_cov.txt", true, smooth));
 						}
 					},					
 					OutputType::MethCov => {
 						if split {
-							v.push(cfg.mk_path("meth.txt", true));
-							v.push(cfg.mk_path("cov.txt", true));
+							v.push(cfg.mk_path("meth.txt", true, smooth));
+							v.push(cfg.mk_path("cov.txt", true, smooth));
 						} else {
-							v.push(cfg.mk_path("meth_cov.txt", true));
+							v.push(cfg.mk_path("meth_cov.txt", true, smooth));
 						}
 					},
 					OutputType::Meth => {
 						assert!(!split);
-						v.push(cfg.mk_path("meth.txt", true));
+						v.push(cfg.mk_path("meth.txt", true, smooth));
 					},					
 				};
 			},
@@ -324,11 +332,21 @@ impl Config {
 	pub fn set_heatmaps_full_limit(&mut self, n: u8) { self.core.heatmaps_full_limit = n }
 
 	pub fn merge_output(&self) -> Option<&MergeOutput> { self.core.merge_output.as_ref() }
-	
-	pub fn merge_outputs(&self) -> Option<Vec<PathBuf>> {
-		self.core.merge_output.as_ref().map(|m| m.output_paths(self))	
+
+	pub fn outputs(&self, smooth: bool) -> Option<Vec<PathBuf>> {
+		self.core.merge_output.as_ref().map(|m| m.output_paths(self, smooth))
 	}
 	
+	pub fn merge_outputs(&self) -> Option<Vec<PathBuf>> {
+		self.core.merge_output.as_ref().map(|m| m.output_paths(self, false))
+	}
+
+	pub fn smooth_output(&self) -> Option<&MergeOutput> { self.core.smooth_output.as_ref() }
+	
+	pub fn smooth_outputs(&self) -> Option<Vec<PathBuf>> {
+		self.core.merge_output.as_ref().map(|m| m.output_paths(self, true))
+	}
+
 	pub fn summary(&self) -> bool { self.core.summary }
 
 	pub fn regions(&self) -> &Regions { &self.regions }
@@ -383,8 +401,12 @@ impl Config {
 
 	pub fn sample_info(&self) -> &SampleInfo { &self.sample_info }
 
-	pub fn mk_path(&self, name: &str, add_suffix: bool) -> PathBuf {
-		let mut s = format!("{}_{}", self.prefix(), name);
+	pub fn mk_path(&self, name: &str, add_suffix: bool, smooth: bool) -> PathBuf {
+		let mut s = if smooth {
+			format!("{}_smooth_{}", self.prefix(), name)
+		} else {
+			format!("{}_{}", self.prefix(), name)
+		};
 		if add_suffix && self.compress() && !s.ends_with(".gz") {
 			s.push_str(".gz")
 		}

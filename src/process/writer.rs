@@ -8,7 +8,9 @@ use crossbeam_channel::Receiver;
 use crate::{
 	config::*,
 	stats::{SampleStats, SiteStats, VarStore},
+	sample::Sample,
 };
+use crate::process::print_value::PrintValue;
 
 use super::{
 	reader::Counts,
@@ -19,11 +21,21 @@ use super::{
 	MsgBlock,
 };
 
+fn print_header(pv: Option<&mut Box<dyn PrintValue>>, samples: &[Sample]) -> anyhow::Result<()> {
+	if let Some(p) = pv {
+		p.print_str("chrom\tstart\tstop\tn_pass\tsdev")?;
+		for s in samples.iter().map(|sample| sample.name()) { p.print_header(s)? }
+		p.print_str("\n")?;
+	}
+	Ok(())
+}
+
 pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::Result<()> {
 	
 	info!("Starting processing:");
 	
-	let mut pv = get_print_value(&cfg)?;
+	let mut pv = get_print_value(&cfg, false)?;
+	let mut spv = get_print_value(&cfg, true)?;
 	
 	let min_counts = cfg.min_counts();
 	let min_samples = cfg.min_samples();
@@ -32,12 +44,9 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 	let mut site_stats = SiteStats::default();
 	let samples = cfg.sample_info().samples();
 
-	// Print header line if required
-	if let Some(p) = pv.as_mut() {
-		p.print_str("chrom\tstart\tstop\tn_pass\tsdev")?;
-		for s in samples.iter().map(|sample| sample.name()) { p.print_header(s)? }
-		p.print_str("\n")?
-	}
+	// Print header lines if required
+	print_header(pv.as_mut(), samples)?;
+	print_header(spv.as_mut(), samples)?;
 
 	let mut stats: Vec<_> = samples.iter().map(|s| SampleStats::new(s.name(), s.name())).collect();
 	let mut hist = if cfg.distribution() {
@@ -93,7 +102,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 	
 	if cfg.summary() {
 	// Write out sample summary statistics
-		let fname = cfg.mk_path("sample_stats.txt", false);
+		let fname = cfg.mk_path("sample_stats.txt", false, false);
 		debug!("Writing out sample statistics to {:?}", fname);
 		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 
@@ -104,7 +113,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 
 		if samples.len() > 1 {
 			// Write out site summary statistics
-			let fname = cfg.mk_path("site_stats.txt", false);
+			let fname = cfg.mk_path("site_stats.txt", false, false);
 			debug!("Writing out site statistics to {:?}", fname);
 			let mut summ_wrt = BufWriter::new(File::create(fname)?);
 			site_stats.write_report(&mut summ_wrt)?;
@@ -117,7 +126,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 			SimilarityType::Distance => "distance.txt",
 			SimilarityType::Correlation => "corr.txt",
 			SimilarityType::Covariance => "covar.txt",
-		}, false);
+		}, false, false);
 		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		dist.print_table(&mut summ_wrt, samples)?;
 	}
@@ -126,7 +135,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 
 	if let Some(mut hst) = hist {
 		hst.handle_cache();
-		let fname = cfg.mk_path("dist.txt", false);
+		let fname = cfg.mk_path("dist.txt", false, false);
 		let mut summ_wrt = BufWriter::new(File::create(fname)?);
 		hst.print_table(&mut summ_wrt, samples)?;
 	}
@@ -135,7 +144,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 
 	if let Some(mut hm) = heatmaps {
 		if samples.len() > 1 {
-			let fname = cfg.mk_path("heatmaps.txt", false);
+			let fname = cfg.mk_path("heatmaps.txt", false, false);
 			let mut summ_wrt = BufWriter::new(File::create(fname)?);
 			hm.print_table(&mut summ_wrt, samples, cfg.blank_lines())?;
 		}
