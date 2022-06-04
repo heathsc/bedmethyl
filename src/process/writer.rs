@@ -13,15 +13,15 @@ use crate::{
 use crate::process::print_value::PrintValue;
 
 use super::{
-	reader::Counts,
-	print_value::{get_print_value, PVal},
+	reader::{ImpCounts, Counts},
+	print_value::{get_print_value_u32, get_print_value_f64},
 	distance::Distance,
 	hist::Hist,
 	heatmaps::{HeatMaps, Obs},
 	MsgBlock,
 };
 
-fn print_header(pv: Option<&mut Box<dyn PrintValue>>, samples: &[Sample]) -> anyhow::Result<()> {
+fn print_header<T>(pv: Option<&mut Box<dyn PrintValue<T>>>, samples: &[Sample]) -> anyhow::Result<()> {
 	if let Some(p) = pv {
 		p.print_str("chrom\tstart\tstop\tn_pass\tsdev")?;
 		for s in samples.iter().map(|sample| sample.name()) { p.print_header(s)? }
@@ -34,8 +34,8 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 	
 	info!("Starting processing:");
 	
-	let mut pv = get_print_value(&cfg, false)?;
-	let mut spv = get_print_value(&cfg, true)?;
+	let mut pv = get_print_value_u32(&cfg, false)?;
+	let mut spv = get_print_value_f64(&cfg, true)?;
 	
 	let min_counts = cfg.min_counts();
 	let min_samples = cfg.min_samples();
@@ -61,6 +61,19 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 
 	while let Ok(mblk) = recv.recv() {
 		for rec in mblk.into_iter() {
+			let imp_var = if cfg.smooth() {
+				let mut var = VarStore::new();
+				for (a, b) in rec.imp_counts.as_ref().unwrap().iter().map(|ic| {
+					let ImpCounts{non_converted: ncnv, converted: cnv } = ic;
+					(*ncnv, *cnv)
+				}) {
+					if a + b > 0.0001 {
+						var.add((a + 1.0) as f64 / ((a + b + 2.0) as f64))
+					}
+				}
+				Some(var)
+			} else { None };
+
 			let mut var = VarStore::new();
 			for (a, b) in rec.counts.iter().map(|c| {
 				let Counts{non_converted: ncnv, converted: cnv} = c;
@@ -78,7 +91,8 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 						p.print_str(format!("{}\t{}\t{}\t{}\t{:.4}", chrom, rec.pos, rec.pos + if rec.two_base { 2 } else { 1 }, var.n(), sd).as_str())?
 					}
 					if let Some(p) = spv.as_mut() {
-						p.print_str(format!("{}\t{}\t{}\t{}\t{:.4}", chrom, rec.pos, rec.pos + if rec.two_base { 2 } else { 1 }, var.n(), sd).as_str())?
+						let ivar = imp_var.unwrap();
+						p.print_str(format!("{}\t{}\t{}\t{}\t{:.4}", chrom, rec.pos, rec.pos + if rec.two_base { 2 } else { 1 }, ivar.n(), ivar.var().sqrt()).as_str())?
 					}
 					if let Some(d) = distance.as_mut() { d.clear_obs() };
 					let mut ovec = if heatmaps.is_some() && var.n() > 1 { Some(Vec::with_capacity(var.n())) } else { None };
@@ -86,7 +100,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 						let Counts{non_converted: a, converted: b} = *ct;
 						if a + b >= min_counts {
 							stats[i].add_site(a, b);
-							if let Some(p) = pv.as_mut() { p.print_value(PVal::Ct(a), PVal::Ct(b))? }
+							if let Some(p) = pv.as_mut() { p.print_value(a, b)? }
 							if let Some(d) = distance.as_mut() { d.add_obs(i, ((a + 1) as f64) / ((a + b + 2) as f64)) };
 							if let Some(hst) = hist.as_mut() { hst.add_obs(i, a, b) }
 							if let Some(v) = ovec.as_mut()  { v.push(Obs{idx: i, a, b})}
@@ -99,15 +113,15 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::R
 							if cfg.round_counts() {
 								for ct in ict.iter() {
 									if ct.imputed() {
-										let a = ct.non_converted.round() as u32;
-										let b = ct.converted.round() as u32;
-										p.print_value(PVal::Ct(a), PVal::Ct(b))?
+										let a = ct.non_converted.round();
+										let b = ct.converted.round();
+										p.print_value(a, b)?
 									} else {	p.print_missing()? }
 								}
 							} else {
 								for ct in ict.iter() {
 									if ct.imputed() {
-										p.print_value(PVal::Imp(ct.non_converted), PVal::Imp(ct.converted))?
+										p.print_value(ct.non_converted, ct.converted)?
 									} else {	p.print_missing()? }
 								}
 							}
