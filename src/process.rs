@@ -18,7 +18,7 @@ mod smooth;
 use crate::config::*;
 use crate::process::reader::MultiRecord;
 
-const BLOCK_SIZE:usize = 8192;
+const BLOCK_SIZE:usize = 1024;
 
 pub type MsgBlock = VecDeque<MultiRecord>;
 

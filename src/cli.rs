@@ -186,6 +186,8 @@ fn handle_smooth_opts(cfg: &mut Config, msub: &ArgMatches) -> anyhow::Result<()>
 	cfg.set_window_size(parse::<NonZeroUsize>(msub.value_of("window_size").unwrap())?);
 	cfg.set_min_sites(parse::<NonZeroUsize>(msub.value_of("min_sites").unwrap())?);
 	cfg.set_max_distance(parse::<usize>(msub.value_of("max_distance").unwrap())?);
+	cfg.set_round_counts(msub.is_present("round_counts"));
+	cfg.set_compress(msub.is_present("compress"));
 
 	let value_delim = if msub.is_present("split_output") {
 		Some(ValueDelim::Split)
@@ -193,7 +195,10 @@ fn handle_smooth_opts(cfg: &mut Config, msub: &ArgMatches) -> anyhow::Result<()>
 		msub.value_of("value_delim").map(ValueDelim::from_str).flatten()
 	};
 
-	let output_type = msub.value_of("smooth_output_type").map(OutputType::from_str).flatten();
+	let output_type = msub.value_of("smooth_output_type")
+		.or_else(|| msub.value_of("output_type"))
+		.or(Some("non_conv-meth"))
+		.and_then(OutputType::from_str);
 
 	cfg.set_smooth_outputs(output_type, value_delim);
 
@@ -207,6 +212,15 @@ fn heatmaps_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Ve
 	let (mut cfg, hts_vec) = handle_common(m, msub)?;
 	
 	handle_heatmaps_opts(&mut cfg, msub)?;	
+	
+	Ok((cfg, hts_vec))
+}
+
+fn smooth_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<Hts>)> {
+
+	let (mut cfg, hts_vec) = handle_common(m, msub)?;
+
+	handle_smooth_opts(&mut cfg, msub)?;
 	
 	Ok((cfg, hts_vec))
 }
@@ -233,7 +247,10 @@ pub fn handle_cli() -> anyhow::Result<(Config, Vec<Hts>)> {
 		},
 		Some(("heatmaps", m_sub)) => {
 			heatmaps_com(&m, m_sub)
-		},		
+		},
+		Some(("smooth", m_sub)) => {
+			smooth_com(&m, m_sub)
+		},
 		_ => {
 			Err(anyhow!("Unknown subcommand"))
 		},
@@ -267,7 +284,15 @@ pub fn handle_cli() -> anyhow::Result<(Config, Vec<Hts>)> {
 		info!("  Creating merged output");
 		info!("    Output Type: {:?}", mo.output_type());
 		info!("    Value Delim: {:?}", mo.value_delim());
-		for p in cfg.merge_outputs().iter() {
+		for p in cfg.outputs(false).iter() {
+			info!("    Output file: {:?}", p)
+		}
+	}
+	if let Some(mo) = cfg.smooth_output() {
+		info!("  Creating smoothed output");
+		info!("    Output Type: {:?}", mo.output_type());
+		info!("    Value Delim: {:?}", mo.value_delim());
+		for p in cfg.outputs(true).iter() {
 			info!("    Output file: {:?}", p)
 		}
 	}

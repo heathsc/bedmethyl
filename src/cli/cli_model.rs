@@ -213,7 +213,7 @@ pub(super) fn cli_model() -> ArgMatches {
             )
             .arg(
                Arg::new("window_size")
-                  .long("window-size")
+                  .short('w').long("window-size")
                   .takes_value(true).value_name("BASE PAIRS").default_value("1000")
                   .help("Minimum window size for smoothing")
             )
@@ -234,7 +234,7 @@ pub(super) fn cli_model() -> ArgMatches {
                   .long("smooth-output-type")
                   .takes_value(true).value_name("OUTPUT TYPE")
                   .possible_values(&["non_conv-conv", "non_conv-cov", "meth-cov", "meth"])
-                  .ignore_case(true).default_value("non_conv-conv")
+                  .ignore_case(true)
                   .help("Set output type")
             )
             .arg(
@@ -326,7 +326,7 @@ pub(super) fn cli_model() -> ArgMatches {
             )
             .arg(
                Arg::new("smooth_output_type")
-                  .long("smooth-output-type")
+                  .short('T').long("smooth-output-type")
                   .takes_value(true).value_name("OUTPUT TYPE")
                   .possible_values(&["non_conv-conv", "non_conv-cov", "meth-cov", "meth"])
                   .ignore_case(true).default_value("non_conv-conv")
@@ -345,6 +345,11 @@ pub(super) fn cli_model() -> ArgMatches {
                Arg::new("round_counts")
                   .long("round-counts")
                   .help("Round smoothed counts")
+            )
+            .arg(
+               Arg::new("compress")
+                  .short('z').long("compress")
+                  .help("Compress output files (with bgzip)")
             )
             .arg(
                Arg::new("sample_file")

@@ -50,8 +50,8 @@ impl ValueDelim {
 			"slash" => Some(Self::Slash),
 			_ => None,
 		}
-	}	
-	
+	}
+
 	pub fn get_delim_char(&self) -> char {
 		match self {
 			ValueDelim::Space => ' ',
@@ -334,18 +334,14 @@ impl Config {
 	pub fn merge_output(&self) -> Option<&MergeOutput> { self.core.merge_output.as_ref() }
 
 	pub fn outputs(&self, smooth: bool) -> Option<Vec<PathBuf>> {
-		self.core.merge_output.as_ref().map(|m| m.output_paths(self, smooth))
-	}
-	
-	pub fn merge_outputs(&self) -> Option<Vec<PathBuf>> {
-		self.core.merge_output.as_ref().map(|m| m.output_paths(self, false))
+		if smooth {
+			self.core.smooth_output.as_ref()
+		} else {
+			self.core.merge_output.as_ref()
+		}.map(|m| m.output_paths(self, smooth))
 	}
 
 	pub fn smooth_output(&self) -> Option<&MergeOutput> { self.core.smooth_output.as_ref() }
-	
-	pub fn smooth_outputs(&self) -> Option<Vec<PathBuf>> {
-		self.core.merge_output.as_ref().map(|m| m.output_paths(self, true))
-	}
 
 	pub fn summary(&self) -> bool { self.core.summary }
 

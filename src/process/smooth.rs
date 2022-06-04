@@ -2,9 +2,7 @@ use std::{
    collections::VecDeque,
 };
 
-use anyhow::Context;
-
-use super::reader::{Record, Counts, ImpCounts, InputFile};
+use super::reader::{Record, ImpCounts, InputFile};
 
 const TRICUBE_CONST: f64 = 70.0 / 81.0;
 // Used to bound the methylation away from 0 or 1
@@ -301,24 +299,21 @@ fn chol_solve<'a>(c: &[f64; 6], y: &'a mut [f64; 3]) -> &'a [f64; 3] {
 // Calculate inverse of 3 x 3 symmetric PD matrix given
 // the cholesky decomposition (lower triangular)
 fn chol_inv(c: &[f64; 6]) -> [f64; 6] {
-   unsafe {
-      let mut inv: [f64; 6] = std::mem::uninitialized();
-      // First col
-      let a0 = 1.0 / c[0];
-      let a1 = -c[1] * a0 / c[2];
-      let a2 = (-c[3] * a0 - c[4] * a1) / c[5];
-      inv[3] = a2 / c[5];
-      inv[1] = (a1 - c[4] * inv[3]) / c[2];
-      inv[0] = (a0 - c[3] * inv[3] - c[1] * inv[1]) / c[0];
-      // Second col
-      let a1 = 1.0 / c[2];
-      let a2 = (-c[4] * a1) / c[5];
-      inv[4] = a2 / c[5];
-      inv[2] = (a1 - c[4] * inv[4]) / c[2];
-      // last col
-      inv[5] = 1.0 / (c[5] * c[5]);
-      inv
-   }
+   // First col
+   let a0 = 1.0 / c[0];
+   let a1 = -c[1] * a0 / c[2];
+   let a2 = (-c[3] * a0 - c[4] * a1) / c[5];
+   let i3 = a2 / c[5];
+   let i1 = (a1 - c[4] * i3) / c[2];
+   let i0 = (a0 - c[3] * i3 - c[1] * i1) / c[0];
+   // Second col
+   let a1 = 1.0 / c[2];
+   let a2 = (-c[4] * a1) / c[5];
+   let i4 = a2 / c[5];
+   let i2 = (a1 - c[4] * i4) / c[2];
+   // last col
+   let i5 = 1.0 / (c[5] * c[5]);
+   [i0, i1, i2, i3, i4, i5]
 }
 
 #[derive(Copy, Clone)]
