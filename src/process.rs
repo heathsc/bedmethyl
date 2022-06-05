@@ -63,25 +63,26 @@ pub fn process(cfg: &Config, mut hts_vec: Vec<Hts>) -> anyhow::Result<()> {
 				// If we only have one thread we skip the merge step and send the output from the read thread directly to the next stage
 				out_tx.clone()
 			};
-			read_tasks.push(scope.spawn(move |_| { reader::reader_thread(cfg, hvec, sample_idx, tx) }));
+			read_tasks.push(scope.spawn(move |_| { reader::reader_thread(cfg, hvec, sample_idx, tx, nthr == 1) }));
 			sample_idx += ns;
 		}
 
+		let mut merge_tasks = Vec::new();
+
 		// If multiple read threads are used, set up merge thread
-		let mut merge_task = if nthr > 1 {
-			Some(
-				scope.spawn(move |_| { reader::merge_thread(cfg, channels, out_tx)})
-			)
+		if nthr > 1 {
+			merge_tasks.push(scope.spawn(move |_| { reader::merge_thread(cfg, channels, out_tx, true)}))
 		} else {
 			drop(out_tx);
-			None
-		};
+		}
 
 		// Wait for read threads
 		for jh in read_tasks.drain(..) { let _ = jh.join(); }
 
 		// Wait for merge thread if used
-		if let Some(jh) = merge_task.take() { let _ = jh.join(); }
+		for jh in merge_tasks.drain(..) {
+			let _ = jh.join();
+		}
 
 		// Wait for writer thread
 		let _ = writer_task.join();

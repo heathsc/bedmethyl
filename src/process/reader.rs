@@ -266,7 +266,7 @@ pub struct MultiRecord {
 	pub smooth_fit: Option<Vec<Option<SmoothFit>>>,
 }
 
-pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usize, mut sender: Sender<MsgBlock>)-> anyhow::Result<()> {
+pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usize, mut sender: Sender<MsgBlock>, final_level: bool)-> anyhow::Result<()> {
 
 	let nf = hts_vec.len();
 
@@ -329,7 +329,7 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 		if let Some((idx, x, strand)) = curr {
 			let mut counts = Vec::with_capacity(nf);
 			let mut imp_counts = if cfg.smooth() { Some(Vec::with_capacity(nf)) } else { None};
-			let mut sm_vec = if cfg.smooth() { Some(Vec::with_capacity(nf)) } else { None };
+			let mut sm_vec = if cfg.smooth() && !final_level { Some(Vec::with_capacity(nf)) } else { None };
 
 			for ifile in ifiles.iter_mut() {
 				let mut sm: Option<SmoothFit> = None;
@@ -374,19 +374,24 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 					}
 				}){
 					counts.push(rec.counts);
-					if let Some(v) = sm_vec.as_mut() {
+
+					if cfg.smooth() {
 						let ic: ImpCounts = rec.smooth_fit.as_ref().map(|sf| sf.impute(x)).unwrap_or_default();
 						imp_counts.as_mut().unwrap().push(ic);
+					}
+					if let Some(v) = sm_vec.as_mut() {
 						v.push(rec.smooth_fit);
 					}
 
 				} else {
-					if let Some(v) = sm_vec.as_mut() {
+					if cfg.smooth() {
 						let ic: ImpCounts = sm.as_ref().map(|sf| sf.impute(x)).unwrap_or_default();
 						imp_counts.as_mut().unwrap().push(ic);
+					}
+					counts.push(Counts::default());
+					if let Some(v) = sm_vec.as_mut() {
 						v.push(sm);
 					}
-					counts.push(Counts::default())
 				}
 			}
 			let mrec = MultiRecord {
@@ -447,7 +452,7 @@ impl Channel {
 	}
 }
 
-pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut sender: Sender<MsgBlock>)-> anyhow::Result<()> {
+pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut sender: Sender<MsgBlock>, final_level: bool)-> anyhow::Result<()> {
 
 	debug!("Starting merge thread");
 
@@ -478,6 +483,8 @@ pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, 
 		if let Some((idx,x, strand)) = curr {
 			let mut counts: Vec<Counts> = Vec::new();
 			let mut imp_counts = if cfg.smooth() { Some(Vec::new()) } else { None};
+			let mut sm_vec = if cfg.smooth() && !final_level { Some(Vec::new()) } else { None };
+
 			for chan in channels.iter_mut() {
 				let mut sm: Vec<Option<SmoothFit>> = vec!(None; chan.ns);
 				if let Some(rec) = chan.curr_rec.take().and_then(|mut r| {
@@ -513,13 +520,13 @@ pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, 
 								for ix in 0..chan.ns {
 									let dist = chan.last_smooth_fit[ix]
 										.and_then(|(_, sf)| if x.abs_diff(sf.pos) as f64 <= sf.bandwidth {
-										Some((x.abs_diff(sf.pos), sf))
-									} else { None });
+											Some((x.abs_diff(sf.pos), sf))
+										} else { None });
 									let dist1 = r.smooth_fit.as_ref().and_then(|v| v[ix])
 										.and_then(|sf| if x.abs_diff(sf.pos) as f64 <= sf.bandwidth {
 											Some(x.abs_diff(sf.pos))
 										} else { None });
-									sm[ix] = match(dist, dist1) {
+									sm[ix] = match (dist, dist1) {
 										(Some((x, sf)), Some(y)) => if x <= y { Some(sf) } else { r.smooth_fit.as_ref().unwrap()[ix] },
 										(Some((_, sf)), None) => Some(sf),
 										(None, Some(_)) => r.smooth_fit.as_ref().unwrap()[ix],
@@ -542,8 +549,11 @@ pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, 
 						None
 					}
 				}) {
-					let MultiRecord { counts: mut cn, imp_counts: mut icn, .. } = rec;
+					let MultiRecord { counts: mut cn, imp_counts: mut icn, smooth_fit: svec, .. } = rec;
 					counts.append(&mut cn);
+					if let Some(v) = sm_vec.as_mut() {
+						v.append(&mut svec.unwrap());
+					}
 					if let Some(ic) = imp_counts.as_mut() {
 						ic.append(icn.as_mut().unwrap())
 					}
@@ -557,6 +567,9 @@ pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, 
 							ic.push(icn);
 						}
 					}
+					if let Some(v) = sm_vec.as_mut() {
+						v.append(&mut sm);
+					}
 				}
 			}
 			let mrec = MultiRecord {
@@ -566,7 +579,7 @@ pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, 
 				counts,
 				imp_counts,
 				strand,
-				smooth_fit: None, // We don't need these anymore
+				smooth_fit: sm_vec, // We don't need these anymore
 			};
 			rec_vec.push_back(mrec);
 			if rec_vec.len() >= BLOCK_SIZE {
