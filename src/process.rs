@@ -34,7 +34,15 @@ pub fn process(cfg: &Config, mut hts_vec: Vec<Hts>) -> anyhow::Result<()> {
 
 		// Spawn writer / processing thread if required
 		let (out_tx, rx) = bounded(64);
-		let writer_task = scope.spawn(move |_| { writer::writer_thread(cfg, rx) });
+		let (mut smooth_writer_task, sw_send) = if cfg.smooth() {
+			let (tx, srx) = bounded(64);
+			let task = scope.spawn(move |_| { writer::smooth_writer_thread(cfg, srx) });
+			(Some(task), Some(tx))
+		} else {
+			(None, None)
+		};
+
+		let writer_task = scope.spawn(move |_| { writer::writer_thread(cfg, rx, sw_send) });
 
 		// Spawn reader threads. Partition input files across reader threads
 		// Each thread gets a vector of Hts structures and a channel
@@ -77,6 +85,11 @@ pub fn process(cfg: &Config, mut hts_vec: Vec<Hts>) -> anyhow::Result<()> {
 
 		// Wait for writer thread
 		let _ = writer_task.join();
+
+		// Wait for smooth writer thread
+		if let Some(tsk) = smooth_writer_task.take() {
+			let _= tsk.join();
+		}
 
 	}).expect("Error creating thread scope");
 
