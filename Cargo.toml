@@ -1,6 +1,6 @@
 [package]
 name = "bedmethyl"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -16,4 +16,5 @@ num_cpus = "1.13.0"
 regex = "1"
 crossbeam-channel = "~0.5"
 crossbeam-utils = "~0.8"
+libc = "~0.2"
 r_htslib = { git = "https://github.com/heathsc/r_htslib.git" }

@@ -38,6 +38,9 @@ pub(super) fn smooth_writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> an
 		None => return Ok(())
 	};
 
+	let tid = unsafe { libc::gettid() };
+	debug!("Smooth writer thread: {:?}", tid);
+
 	info!("Starting writing of smoothed values:");
 	let min_sdev = cfg.min_sdev();
 
@@ -89,7 +92,13 @@ pub(super) fn smooth_writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> an
 
 pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>, mut smooth_tr: Option<Sender<MsgBlock>>) -> anyhow::Result<()> {
 
+	let tid = unsafe { libc::gettid() };
+	debug!("Writer thread: {:?}", tid);
+
 	info!("Starting processing:");
+
+	// Keep track of the current contig so that we can update the
+	let mut curr_contig: Option<&str> = None;
 
 	let mut pv = get_print_value_u32(&cfg, false)?;
 
@@ -125,9 +134,15 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>, mut smooth_t
 					var.add((a + 1) as f64 / ((a + b + 2) as f64));
 				}
 			}
+			let chrom = cfg.regions()[rec.reg_idx as usize].contig();
+
+			if curr_contig.as_ref().map(|&s| s != chrom).unwrap_or(true) {
+				curr_contig = Some(chrom);
+				info!("At contig {}", chrom)
+			}
+
 			if var.n() >= min_samples {
 				let sd = var.var().sqrt();
-				let chrom = cfg.regions()[rec.reg_idx as usize].contig();
 				if sd >= min_sdev {
 					if let Some(p) = pv.as_mut() {
 						p.print_str(format!("{}\t{}\t{}\t{}\t{:.4}", chrom, rec.pos, rec.pos + if rec.two_base { 2 } else { 1 }, var.n(), sd).as_str())?

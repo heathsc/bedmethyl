@@ -158,7 +158,7 @@ impl VInfo {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum VType { Factor, Covariate }
 
-/// Process header line that has been split into the type are argument fields
+/// Process header line that has been split into the type and argument fields
 /// i.e., for a header line:
 ///    @Factor<name="group",col=5>
 /// s will be "@Factor" and t will be "name=\"group\",col=5"
