@@ -113,7 +113,6 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 		}
 	}
 
-
 	fn _read_rec(&mut self) -> anyhow::Result<Option<Record>> {
 
 		while !self.eof {

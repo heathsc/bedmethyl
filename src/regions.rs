@@ -3,7 +3,7 @@ use std::{
 	cmp::{Ord, Ordering},
 	fmt,
 	slice,
-	collections::{HashMap, hash_map},
+	collections::{HashMap, btree_map, BTreeMap},
 	sync::Arc,
 };
 
@@ -187,7 +187,7 @@ impl Region {
 
 #[derive(Default)]
 pub struct Regions {
-	ctg_reg: HashMap<Arc<str>, Vec<Region>>,
+	ctg_reg: BTreeMap<Arc<str>, Vec<Region>>,
 	all_regs: Option<Vec<Region>>,
 }
 
@@ -398,7 +398,7 @@ impl Regions {
 }
 
 pub struct RegionIter<'a> {
-	reg_vec: hash_map::Values<'a, Arc<str>, Vec<Region>>,
+	reg_vec: btree_map::Values<'a, Arc<str>, Vec<Region>>,
 	regs: Option<slice::Iter<'a, Region>>,
 }
 
