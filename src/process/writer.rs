@@ -61,7 +61,7 @@ pub(super) fn smooth_writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> an
 				}
 			}
 			let sd = var.var().sqrt();
-			let chrom = cfg.regions()[rec.reg_idx as usize].contig();
+			let chrom = cfg.regions().get(rec.reg_idx as usize).expect("Missing contig!").contig();
 			if sd >= min_sdev {
 				pv.print_str(format!("{}\t{}\t{}\t{}\t{:.4}", chrom, rec.pos, rec.pos + if rec.two_base { 2 } else { 1 }, var.n(), var.var().sqrt()).as_str())?;
 
@@ -134,7 +134,7 @@ pub(super) fn writer_thread(cfg: &Config, recv: Receiver<MsgBlock>, mut smooth_t
 					var.add((a + 1) as f64 / ((a + b + 2) as f64));
 				}
 			}
-			let chrom = cfg.regions()[rec.reg_idx as usize].contig();
+			let chrom = cfg.regions().get(rec.reg_idx as usize).expect("Missing contig").contig();
 
 			if curr_contig.as_ref().map(|&s| s != chrom).unwrap_or(true) {
 				curr_contig = Some(chrom);

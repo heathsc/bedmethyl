@@ -8,9 +8,15 @@ use std::{
 
 use anyhow::{Context, Error};
 use clap::ArgMatches;
+use log::Level::Debug;
+
 use r_htslib::*;
 
-use crate::{config::*, regions::Regions, sample};
+use crate::{
+	config::*,
+	regions::{Regions, Sites},
+	sample
+};
 
 fn parse<T>(s: &str) -> anyhow::Result<T>
 where
@@ -91,6 +97,19 @@ fn handle_common(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, V
 	Ok((cfg, hts_vec))
 }
 
+// Handle region/site options
+fn handle_sites(cfg: &mut Config, m: &ArgMatches) -> anyhow::Result<()> {
+	// Parse site options
+	if let Some(f) = m.value_of("sites") {
+		let sites = Sites::from_file(f)?;
+		let win_size = if cfg.smooth() {
+			cfg.min_sites() * cfg.max_distance()
+		} else { 1 };
+		cfg.regions_mut().trim(&sites, win_size)
+	}
+	Ok(())
+}
+
 // Handle options for merge sub-command
 fn merge_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<Hts>)> {
 
@@ -122,7 +141,7 @@ fn merge_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<H
 	}
 
 	if msub.is_present("smooth") {
-		handle_smooth_opts(&mut cfg, msub)?
+		handle_smooth_opts(&mut cfg, msub, true)?
 	} else {
 
 	}
@@ -180,7 +199,7 @@ fn handle_heatmaps_opts(cfg: &mut Config, msub: &ArgMatches) -> anyhow::Result<(
 	Ok(())
 }
 
-fn handle_smooth_opts(cfg: &mut Config, msub: &ArgMatches) -> anyhow::Result<()> {
+fn handle_smooth_opts(cfg: &mut Config, msub: &ArgMatches, output: bool) -> anyhow::Result<()> {
 
 	// Handle heatmaps options
 	cfg.set_window_size(parse::<NonZeroUsize>(msub.value_of("window_size").unwrap())?);
@@ -189,18 +208,20 @@ fn handle_smooth_opts(cfg: &mut Config, msub: &ArgMatches) -> anyhow::Result<()>
 	cfg.set_round_counts(msub.is_present("round_counts"));
 	cfg.set_compress(msub.is_present("compress"));
 
-	let value_delim = if msub.is_present("split_output") {
-		Some(ValueDelim::Split)
-	} else {
-		msub.value_of("value_delim").map(ValueDelim::from_str).flatten()
-	};
+	if output {
+		let value_delim = if msub.is_present("split_output") {
+			Some(ValueDelim::Split)
+		} else {
+			msub.value_of("value_delim").map(ValueDelim::from_str).flatten()
+		};
 
-	let output_type = msub.value_of("smooth_output_type")
-		.or_else(|| msub.value_of("output_type"))
-		.or(Some("non_conv-meth"))
-		.and_then(OutputType::from_str);
+		let output_type = msub.value_of("smooth_output_type")
+			.or_else(|| msub.value_of("output_type"))
+			.or(Some("non_conv-meth"))
+			.and_then(OutputType::from_str);
 
-	cfg.set_smooth_outputs(output_type, value_delim);
+		cfg.set_smooth_outputs(output_type, value_delim);
+	}
 
 	cfg.set_smooth(true);
 
@@ -220,8 +241,20 @@ fn smooth_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<
 
 	let (mut cfg, hts_vec) = handle_common(m, msub)?;
 
-	handle_smooth_opts(&mut cfg, msub)?;
-	
+	handle_smooth_opts(&mut cfg, msub, true)?;
+
+	Ok((cfg, hts_vec))
+}
+
+fn model_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<Hts>)> {
+
+	let (mut cfg, hts_vec) = handle_common(m, msub)?;
+
+	if !msub.is_present("no-smooth") {
+		handle_smooth_opts(&mut cfg, msub, false)?;
+	}
+	cfg.set_model(true);
+
 	Ok((cfg, hts_vec))
 }
 
@@ -232,7 +265,7 @@ pub fn handle_cli() -> anyhow::Result<(Config, Vec<Hts>)> {
 	
 	debug!("Handling command line inputs");
 
-	let (cfg, hts_vec) = match m.subcommand() {
+	let (mut cfg, hts_vec) = match m.subcommand() {
 		Some(("merge", m_sub)) => {
 			merge_com(&m, m_sub)
 		},
@@ -251,10 +284,15 @@ pub fn handle_cli() -> anyhow::Result<(Config, Vec<Hts>)> {
 		Some(("smooth", m_sub)) => {
 			smooth_com(&m, m_sub)
 		},
+		Some(("model", m_sub)) => {
+			model_com(&m, m_sub)
+		},
 		_ => {
 			Err(anyhow!("Unknown subcommand"))
 		},
 	}?;
+
+	handle_sites(&mut cfg, &m)?;
 
 	info!("Configuration");
 	info!("  Number of input files: {}", cfg.n_samples());
@@ -271,8 +309,15 @@ pub fn handle_cli() -> anyhow::Result<(Config, Vec<Hts>)> {
 			info!("    Name: {}", c.name());
 		}
 	}
-	info!("  No. Regions: {}", cfg.regions().len());
-
+	info!("  No. Regions: {}", cfg.regions().n_regions());
+	if log_enabled!(Debug) {
+		for reg in cfg.regions().iter() {
+			let x =reg.sites()
+				.map(|s| format!("Sites: {}", s.len()))
+				.unwrap_or_default();
+			debug!("{}\t{}", reg, x)
+		}
+	}
 	info!("  Output compression: {}", cfg.compress());
 	info!("  Prefix set to {}", cfg.prefix());
 	if let Some(d) = cfg.dir() { info!("  Dir set to {:?}", d) };

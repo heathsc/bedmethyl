@@ -276,7 +276,9 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 	debug!("Creating sample specific region lists");
 	let reg_vec: Vec<_> = hts_vec.iter_mut()
 		.map(|h| {
-			let v: Vec<_> = cfg.regions().iter().map(|r| format!("{:#}", r)).collect();
+			let v: Vec<_> = cfg.regions().iter().map(|r| {
+				format!("{:#}", r)
+			}).collect();
 			h.make_region_list(&v)
 		}).collect();
 

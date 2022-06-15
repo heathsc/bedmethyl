@@ -240,6 +240,9 @@ pub struct ConfigCore {
 	min_sites: usize,
 	max_distance: usize,
 	smooth_output: Option<MergeOutput>,
+
+	// Options for model fitting
+	model: bool,
 }
 
 pub struct Config {
@@ -301,6 +304,8 @@ impl Config {
 
 	pub fn set_compress(&mut self, compress: bool) { self.core.compress = compress }
 
+	pub fn set_model(&mut self, x: bool) { self.core.model = x }
+
 	pub fn set_combine_cpgs(&mut self, combine: bool) {	self.core.combine_cpgs = combine }
 
 	pub fn set_assume_cpg(&mut self, assume: bool) {	self.core.assume_cpg = assume }
@@ -347,6 +352,8 @@ impl Config {
 
 	pub fn regions(&self) -> &Regions { &self.regions }
 
+	pub fn regions_mut(&mut self) -> &mut Regions { &mut self.regions }
+
 	pub fn min_counts(&self) -> u32 { self.core.min_counts }
 
 	pub fn min_samples(&self) -> usize { self.core.min_samples.map(usize::from).unwrap_or(1) }
@@ -366,6 +373,8 @@ impl Config {
 	pub fn dir(&self) -> Option<&Path> { self.core.dir.as_deref() }
 
 	pub fn compress(&self) -> bool { self.core.compress }
+
+	pub fn model(&self) -> bool { self.core.model }
 
 	pub fn distribution(&self) -> bool { self.core.distribution }
 

@@ -64,8 +64,9 @@ pub(super) struct SmoothFile {
 }
 
 impl SmoothFile {
-   pub(super) fn new(n_sites: usize, max_distance: usize, bandwidth: usize) -> Self {
+   pub(super) fn new(n_sites: usize, dist: usize, bandwidth: usize) -> Self {
       trace!("Setting up new SmoothFile");
+      let max_distance = if dist > 0 { dist } else { usize::MAX };
       Self { n_sites, max_distance, bandwidth, curr_idx: 0, cache: None,
          data: VecDeque::with_capacity(n_sites),
          work: Vec::with_capacity(n_sites),
@@ -163,23 +164,16 @@ impl SmoothFile {
          self.work.push(val)
       }
       xwx[3] = xwx[2]; // These are both equal to Sigma w * x^2
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[0], 0.0, 0.0, xwz[0]);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[1], xwx[2], 0.0, xwz[1]);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[3], xwx[4], xwx[5], xwz[2]);
+
+      // Cholesky decomposition
       let c = chol(&mut xwx);
-//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", c[0], 0.0, 0.0);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[1], c[2], 0.0);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[3], c[4], c[5]);
-
+      // Get effects
       let b = chol_solve(&c, &mut xwz);
- //     eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", b[0], b[1], b[2]);
-
       // Get residual SS
       let rss: f64 = self.work.iter().map(|v| v.rss(b)).sum();
-
+      // Estimate phi
       let s2 = rss / ((self.work.len() - 3) as f64);
       let phi = ((self.work.len() as f64) * (s2 - 1.0) / denom).max(0.001).min(0.999);
-//      eprintln!("rss = {}, s2 = {}, phi = {}", rss, s2, phi);
 
       // Update GLS matrices
       xwx = [0.0; 6];
@@ -190,27 +184,14 @@ impl SmoothFile {
       }
       xwx[3] = xwx[2]; // These are both equal to Sigma w * x^2
 
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[0], 0.0, 0.0, xwz[0]);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[1], xwx[2], 0.0, xwz[1]);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}\t\t{:14.10}", xwx[3], xwx[4], xwx[5], xwz[2]);
+      // Cholesky decomposition
       let c = chol(&mut xwx);
-//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", c[0], 0.0, 0.0);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[1], c[2], 0.0);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", c[3], c[4], c[5]);
-
+      // Get updated effects
       let b = chol_solve(&c, &mut xwz);
-//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", b[0], b[1], b[2]);
-
+      // Get Var-cov matrix of effecys
       let inv = chol_inv(c);
-//      eprintln!("\n{:14.10}\t{:14.10}\t{:14.10}", inv[0], 0.0, 0.0);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", inv[1], inv[2], 0.0);
-//      eprintln!("{:14.10}\t{:14.10}\t{:14.10}", inv[3], inv[4], inv[5]);
 
-//      let rss: f64 = self.work.iter().map(|v| v.rss(b)).sum();
-//      let s2 = rss / ((self.work.len() - 3) as f64);
-//      eprintln!("rss = {}, s2 = {}, phi = {}", rss, s2, phi);
-
-//      panic!("OOOOK!");
+      // And store results
       self.data[self.curr_idx].smooth_fit = Some(SmoothFit {
          effects: *b,
          cov: inv,
@@ -261,9 +242,8 @@ impl SmoothFile {
    }
 
    fn drain(&mut self) {
-      while self.range_ok() {
-         assert!(self.curr_idx < self.data.len() && self.data.len() >= self.n_sites, "{} {}", self.data.len(), self.curr_idx);
-         self.fit();
+      while self.data.len() >= self.n_sites && self.curr_idx < self.data.len() {
+          self.fit();
       }
       self.state = SmState::Draining;
    }
@@ -352,10 +332,6 @@ impl FitVal {
    // Calculate z - X * Beta
    fn resid(&self, beta: &[f64; 3]) -> f64 {
       self[5] - (beta[0] + beta[1] * self[1] + beta[2] * self[2])
-//      let x = beta[0] + beta[1] * self[1] + beta[2] * self[2];
-//      let e = self[5] - x;
-//      eprintln!("{}\t{}\t{}\t{}", self[1], self[5], x, e);
-//      e
    }
 
    // Calculate n * (z - X * Beta)^2

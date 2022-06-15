@@ -121,6 +121,7 @@ impl SiteStats {
 	
 	pub fn write_report<W: Write>(&self, w: &mut W) -> io::Result<()> {
 		let (n_sites, sum) = self.sdev_dist.iter().enumerate().fold((0, 0), |(s1, s2), (i, ct)| (s1 + ct, s2 + i * ct));
+		if sum == 0 { return Ok(()) }
 		writeln!(w, "Total sites: {}", n_sites)?;
 		let mut s = 0;
 		let mut q1 = None;

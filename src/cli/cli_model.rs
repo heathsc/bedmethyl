@@ -41,6 +41,12 @@ pub(super) fn cli_model() -> ArgMatches {
             .help("BED file with genomic regions")
       )
       .arg(
+         Arg::new("sites")
+            .short('f').long("sites").global(true)
+            .takes_value(true).value_name("FILE")
+            .help("TSV file (contig, position) with list of sites to output")
+      )
+      .arg(
          Arg::new("min_counts")
             .short('n').long("min-counts").global(true)
             .takes_value(true).value_name("INT").default_value("1")
@@ -95,7 +101,7 @@ pub(super) fn cli_model() -> ArgMatches {
       )
       .arg(
          Arg::new("dir")
-            .short('P').long("dir").global(true)
+            .short('d').long("dir").global(true)
             .takes_value(true).value_name("DIR")
             .help("Set output directory [default: current directory]")
       )
@@ -308,7 +314,7 @@ pub(super) fn cli_model() -> ArgMatches {
             .about("Generate smoothed counts using local regression")
             .arg(
                Arg::new("window_size")
-                  .long("window-size")
+                  .short('w').long("window-size")
                   .takes_value(true).value_name("BASE PAIRS").default_value("1000")
                   .help("Minimum window size for smoothing")
             )
@@ -357,5 +363,49 @@ pub(super) fn cli_model() -> ArgMatches {
                   .help("Sample input file [default: <stdin>]")
             )
       )
+      .subcommand(
+         Command::new("model")
+            .about("Model methylation to allow testing for effects of factors, covariates etc.")
+            .arg(
+               Arg::new("smooth")
+                  .short('s').long("smooth")
+                  .help("Generate smoothed counts using local regression [default]")
+            )
+            .arg(
+               Arg::new("no_smooth")
+                  .short('S').long("no-smooth")
+                  .conflicts_with("smooth")
+                  .help("Generate smoothed counts using local regression [default]")
+            )
+            .arg(
+               Arg::new("compress")
+                  .short('z').long("compress")
+                  .help("Compress output files (with bgzip)")
+            )
+            .arg(
+               Arg::new("window_size")
+                  .short('w').long("window-size")
+                  .takes_value(true).value_name("BASE PAIRS").default_value("1000")
+                  .help("Minimum window size for smoothing")
+            )
+            .arg(
+               Arg::new("min_sites")
+                  .long("min-sites")
+                  .takes_value(true).value_name("INT").default_value("70")
+                  .help("Minimum number of observed sites in window for smoothing")
+            )
+            .arg(
+               Arg::new("max_distance")
+                  .long("max-distance")
+                  .takes_value(true).value_name("BASE PAIRS").default_value("50000")
+                  .help("Maximum distance between adjacent observed sites for smoothing (0 = no_limit)")
+            )
+            .arg(
+               Arg::new("sample_file")
+                  .takes_value(true).value_name("FILE")
+                  .help("Sample input file [default: <stdin>]")
+            )
+      )
+
       .get_matches()
 }
