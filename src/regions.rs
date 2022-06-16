@@ -6,6 +6,7 @@ use std::{
 	collections::{HashMap, btree_map, BTreeMap},
 	sync::Arc,
 };
+use std::num::NonZeroUsize;
 
 use anyhow::Context;
 
@@ -192,7 +193,6 @@ pub struct Regions {
 }
 
 impl Regions {
-
 	pub fn region_from_reg(&mut self, reg: &Reg) -> Region {
 		debug!("Converting reg {} to region", reg);
 		match reg {
@@ -442,12 +442,12 @@ impl Sites {
 			// Expecting at laest 2 columns with contig and position (1 based)
 			if fd.len() > 1 {
 				// Try to parse position
-				let x = fd[1].parse::<usize>().with_context(|| format!("{}: {} - Could not parse position for site: {}", fname, line, fd[1]))?;
+				let x = fd[1].parse::<NonZeroUsize>().with_context(|| format!("{}: {} - Could not parse position for site: {}", fname, line, fd[1]))?;
 				if !contig_site.contains_key(fd[0]) {
 					let ctg = fd[0].to_owned().into_boxed_str();
 					contig_site.insert(ctg, Vec::new());
 				}
-				contig_site.get_mut(fd[0]).unwrap().push(x)
+				contig_site.get_mut(fd[0]).unwrap().push(usize::from(x) - 1)
 			}
 		}
 
@@ -459,8 +459,6 @@ impl Sites {
 	}
 
 	pub fn sites(&self, ctg: &str) -> Option<&Vec<usize>> { self.contig_site.get(ctg) }
-
-	pub fn ctg_present(&self, ctg: &str) -> bool { self.contig_site.contains_key(ctg)}
 
 	pub fn intervals(&self, win_size: usize, ctg: &str) -> Option<Vec<(usize, usize)>> {
 		self.contig_site.get(ctg).map(|v| {

@@ -20,6 +20,7 @@ use super::{
 };
 
 use crate::sample::Sample;
+use crate::regions::Regions;
 
 /// Observed counts
 #[derive(Debug, Copy, Clone, Default)]
@@ -76,11 +77,13 @@ pub(crate) struct InputFile<'a, 'b, 'c> {
 	pending: Option<Record>,
 	current: Option<Record>,
 	sample: &'c Sample,
-	smooth: Option<SmoothFile>,
+	regions: &'c Regions,
+	smooth: Option<SmoothFile<'c>>,
 	last_smooth_fit: Option<(u32, SmoothFit)>,
 	line: usize,
 	merge_strands: bool,
 	eof: bool,
+	specific_sites: bool,
 	format_bug: Option<bool>,
 }
 
@@ -92,7 +95,18 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 				self.current = sm.get_rec(self)?;
 				self.smooth = Some(sm);
 			} else {
-				self.current = self.read_rec()?
+				loop {
+					self.current = self.read_rec()?;
+					if self.specific_sites {
+						if let Some(r) = self.current.as_ref() {
+							let v = self.regions.get(r.reg_idx as usize).expect("Missing region")
+								.sites().expect("No sites for region");
+							if v.binary_search(&r.pos).is_ok() {
+								break
+							}
+						} else { break }
+					} else { break }
+				}
 			}
 		}
 		Ok(self.current.as_ref())
@@ -140,7 +154,7 @@ impl <'a, 'b, 'c>InputFile<'a, 'b, 'c> {
 			}
 			let idx = self.iter.current_region().and_then(|r| r.idx()).expect("Missing region index");
 
-			let rec = Record::from_tbx_record(&self.trec, idx, &mut self.format_bug)
+			let rec = Record::from_tbx_record(&self.trec, idx, &mut self.format_bug, self.specific_sites)
 				.with_context(|| format!("Error reading from {}:{}", self.sample.path().display(), self.line))?;
 
 			if !self.merge_strands {
@@ -191,12 +205,13 @@ pub(super) struct Record {
 	strand: Strand,
 	cg: Option<bool>,
 	two_base: bool,
+	pub(super) keep: bool,
 }
 
 impl Record {
 	pub(super) fn is_observed(&self) -> bool { !self.counts.is_zero() }
 
-	fn from_tbx_record(trec: &TbxRec, reg_idx: u32, format_bug: &mut Option<bool>) -> anyhow::Result<Self> {
+	fn from_tbx_record(trec: &TbxRec, reg_idx: u32, format_bug: &mut Option<bool>, specific_sites: bool) -> anyhow::Result<Self> {
 
 		let mut it = trec.to_str().expect("Null tbx record").trim_end().split('\t');
 
@@ -243,6 +258,7 @@ impl Record {
 					strand,
 					cg,
 					two_base: false,
+					keep: !specific_sites,
 				})
 			} else {
 				Err(anyhow!("Illegal methylation value {} (out of range)", meth))
@@ -289,7 +305,7 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 	let mut ifiles: Vec<_> = hts_vec.iter_mut().zip(reg_vec.iter()).enumerate()
 		.map(|(k, (h, rlist))| {
 			let smooth = if cfg.smooth() {
-				Some(SmoothFile::new(cfg.min_sites(), cfg.max_distance(), cfg.window_size()))
+				Some(SmoothFile::new(cfg.min_sites(), cfg.max_distance(), cfg.window_size(), cfg.regions(), cfg.specific_sites()))
 			} else { None };
 			InputFile {
 				trec: TbxRec::new(),
@@ -297,10 +313,12 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 				pending: None,
 				current: None,
 				sample: &samples[k + sample_idx],
+				regions: cfg.regions(),
 				line: 0,
 				smooth,
 				merge_strands,
 				eof: false,
+				specific_sites: cfg.specific_sites(),
 				format_bug: None,
 				last_smooth_fit: None,
 			}

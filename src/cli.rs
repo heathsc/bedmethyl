@@ -104,8 +104,9 @@ fn handle_sites(cfg: &mut Config, m: &ArgMatches) -> anyhow::Result<()> {
 		let sites = Sites::from_file(f)?;
 		let win_size = if cfg.smooth() {
 			cfg.min_sites() * cfg.max_distance()
-		} else { 1 };
-		cfg.regions_mut().trim(&sites, win_size)
+		} else { 10000 };
+		cfg.regions_mut().trim(&sites, win_size);
+		cfg.set_specific_sites(true);
 	}
 	Ok(())
 }

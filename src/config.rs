@@ -209,6 +209,7 @@ pub struct ConfigCore {
 	min_counts: u32,
 	min_samples: Option<NonZeroUsize>,
 	min_sdev: f64,
+	specific_sites: bool,
 
 	// Options for merge subcommand
 	merge_output: Option<MergeOutput>,
@@ -324,6 +325,8 @@ impl Config {
 
 	pub fn set_smooth(&mut self, x: bool) { self.core.smooth = x }
 
+	pub fn set_specific_sites(&mut self, x: bool) { self.core.specific_sites = x }
+
 	pub fn set_round_counts(&mut self, x: bool) { self.core.round_counts = x }
 
 	pub fn set_window_size(&mut self, n: NonZeroUsize) { self.core.window_size = usize::from(n) }
@@ -373,6 +376,8 @@ impl Config {
 	pub fn dir(&self) -> Option<&Path> { self.core.dir.as_deref() }
 
 	pub fn compress(&self) -> bool { self.core.compress }
+
+	pub fn specific_sites(&self) -> bool { self.core.specific_sites }
 
 	pub fn model(&self) -> bool { self.core.model }
 
