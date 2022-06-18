@@ -453,8 +453,11 @@ impl Sites {
 
 		// Sort sites within contigs
 		for v in contig_site.values_mut() {
-			v.sort_unstable()
+			v.sort_unstable();
+			// Remove duplicates
+			v.dedup()
 		}
+
 		Ok(Sites{contig_site})
 	}
 
