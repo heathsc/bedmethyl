@@ -285,8 +285,9 @@ pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usi
 
 	let nf = hts_vec.len();
 
-	let tid = unsafe { libc::gettid() };
-	debug!("Reader thread starting {:?}", tid);
+	let tid = unsafe { libc::syscall(libc::SYS_gettid)};
+//	let tid = unsafe { libc::gettid() };
+	debug!("Reader thread starting {}", tid);
 
 	debug!("Creating sample specific region lists");
 	let reg_vec: Vec<_> = hts_vec.iter_mut()
@@ -472,10 +473,11 @@ impl Channel {
 	}
 }
 
-pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut sender: Sender<MsgBlock>, final_level: bool)-> anyhow::Result<()> { 
+pub(super) fn merge_thread(cfg: &Config, mut recv_vec: Vec<(Receiver<MsgBlock>, usize)>, mut sender: Sender<MsgBlock>, final_level: bool)-> anyhow::Result<()> {
 
-	let tid = unsafe { libc::gettid() };
-	debug!("Starting merge thread {:?}", tid);
+	let tid = unsafe { libc::syscall(libc::SYS_gettid)};
+//	let tid = unsafe { libc::gettid() };
+	debug!("Starting merge thread {}", tid);
 
 	let mut channels: Vec<_> = recv_vec.drain(..)
 		.map(|(r, ns)|
