@@ -379,7 +379,7 @@ impl Config {
 
 	pub fn specific_sites(&self) -> bool { self.core.specific_sites }
 
-	pub fn model(&self) -> bool { self.core.model }
+//	pub fn model(&self) -> bool { self.core.model }
 
 	pub fn distribution(&self) -> bool { self.core.distribution }
 

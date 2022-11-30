@@ -240,7 +240,7 @@ pub(super) fn get_print_value_u32(cfg: &Config, smooth: bool) -> io::Result<Opti
 
 		for s in cfg.outputs(smooth).expect("No outputs").iter() {
 			debug!("Opening output file {:?} ", s);
-			let h = Hts::open(s, mode)?;
+			let h = Hts::open(Some(s), mode)?;
 			let mut w = OwnedWriter::new(h)?;
 			if cfg.compress() {
 				w.set_mt(num_cpus::get_physical(), 256);
@@ -281,7 +281,7 @@ pub(super) fn get_print_value_f64(cfg: &Config, smooth: bool) -> io::Result<Opti
 
 		for s in cfg.outputs(smooth).expect("No outputs").iter() {
 			debug!("Opening output file {:?} ", s);
-			let h = Hts::open(s, mode)?;
+			let h = Hts::open(Some(s), mode)?;
 			let mut w = OwnedWriter::new(h)?;
 			if cfg.compress() {
 				w.set_mt(num_cpus::get_physical(), 256);

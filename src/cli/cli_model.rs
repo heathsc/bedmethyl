@@ -5,6 +5,7 @@ use clap::{
 pub(super) fn cli_model() -> ArgMatches {
    Command::new("bed_methyl").version(crate_version!()).author("Simon Heath")
       .about("bedmethyl is a toolkit for handling bedMethyl files (ENCODE WGBS output files)")
+      .subcommand_required(true)
       .arg(
          Arg::new("quiet")
             .short('q').long("quiet")

@@ -95,7 +95,7 @@ pub fn get_contig_list(hts_vec: &[Hts]) -> Vec<&str> {
 fn open_file_thread(recv: Receiver<(usize, PathBuf)>, send: Sender<(usize, Hts)>) -> anyhow::Result<()> {
    for (ix, input_file) in recv {
       if !input_file.exists() { return Err(anyhow!("File {} is not accessible", input_file.display())) }
-      let hts = Hts::open(&input_file, "r").with_context(|| format!("Error opening file {}", input_file.display()))?;
+      let hts = Hts::open(Some(&input_file), "r").with_context(|| format!("Error opening file {}", input_file.display()))?;
       send.send((ix, hts)).expect("Error sending Sample");
    }
    Ok(())
