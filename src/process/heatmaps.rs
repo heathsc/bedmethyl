@@ -151,7 +151,7 @@ impl HeatMapCfg {
 		Self {
 			n_bins: cfg.n_bins(),
 			max_n: cfg.kde_cache_limit(),
-			min_n: cfg.min_samples().min(u16::MAX as usize) as u16,
+			min_n: cfg.min_counts().min(u16::MAX as u32) as u16,
 			full_limit: cfg.heatmaps_full_limit() as u32,
 			threads: cfg.threads(),
 		}
@@ -168,7 +168,6 @@ impl HeatMaps {
 		let task = thread::spawn(move || { heatmap_thread(n_samples, hm_cfg, rx) });
 		let tvec = Some(Vec::with_capacity(BLOCKSIZE));
 		Self{n_bins, tx: Some(tx), task: Some(task), tvec}
-
 	}
 	
 	pub(crate) fn add_vec_obs(&mut self, v: Vec<Obs>) {
