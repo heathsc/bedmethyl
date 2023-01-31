@@ -94,8 +94,10 @@ pub fn get_contig_list(hts_vec: &[Hts]) -> Vec<&str> {
 
 fn open_file_thread(recv: Receiver<(usize, PathBuf)>, send: Sender<(usize, Hts)>) -> anyhow::Result<()> {
    for (ix, input_file) in recv {
+      trace!("Checking file {}", input_file.display());
       if !input_file.exists() { return Err(anyhow!("File {} is not accessible", input_file.display())) }
       let hts = Hts::open(Some(&input_file), "r").with_context(|| format!("Error opening file {}", input_file.display()))?;
+      trace!("Sending htsfile {} {}", ix, hts.name());
       send.send((ix, hts)).expect("Error sending Sample");
    }
    Ok(())
@@ -300,6 +302,7 @@ pub fn open_input_files(samples: &[Sample], nthr: usize) -> anyhow::Result<Vec<H
 
    debug!("Opening all input files + index files");
    let (res_s, res_r) = unbounded();
+   let mut open_thread_results = Vec::new();
    thread::scope(|s| {
       let (msg_s, msg_r) = unbounded();
       let jh: Vec<_> = (0..nthr).map(|_| {
@@ -309,21 +312,37 @@ pub fn open_input_files(samples: &[Sample], nthr: usize) -> anyhow::Result<Vec<H
       }).collect();
 
       for (ix, sample) in samples.iter().enumerate() {
+         trace!("Sending {} to open index thread", sample.path().display());
          let pb = sample.path().to_owned();
          msg_s.send((ix, pb)).expect("Error sending message to open index threads");
       }
       drop(msg_s);
       debug!("Waiting for open file threads to finish");
       for j in jh {
-         let _ = j.join().expect("Error from thread");
+         open_thread_results.push(j.join().expect("Error from thread"))
       }
       drop(res_s);
    }).expect("Error creating thread scope");
-   let mut v: Vec<Option<Hts>> = (0..samples.len()).map(|_| None).collect();
-   for (ix, h) in res_r.iter() { v[ix] = Some(h) }
-   let hts_vec: Vec<_> = v.drain(..).map(|x| x.unwrap()).collect();
 
-   debug!("All {} sample files opened successfully", samples.len());
+   let mut failed = false;
+   for res in open_thread_results.drain(..) {
+      if let Err(e) = res {
+         error!("Error when opening input file: {}", e);
+         failed = true;
+      }
+   }
+   if failed {
+      Err(anyhow!("One or more of the input files could not be opened"))
+   } else {
+      let mut v: Vec<Option<Hts>> = (0..samples.len()).map(|_| None).collect();
+      for (ix, h) in res_r.iter() {
+         trace!("Received hts file {} {}", ix, h.name());
+         v[ix] = Some(h)
+      }
+      let hts_vec: Vec<_> = v.drain(..).map(|x| x.unwrap()).collect();
 
-   Ok(hts_vec)
+      debug!("All {} sample files opened successfully", samples.len());
+
+      Ok(hts_vec)
+   }
 }
