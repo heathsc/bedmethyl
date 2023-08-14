@@ -32,7 +32,7 @@ pub fn process(cfg: &Config, mut hts_vec: Vec<Hts>) -> anyhow::Result<()> {
 	// Create thread scope so that we can share references across threads
 	thread::scope(|scope| {
 
-		// Spawn writer / processing thread if required
+		// Spawn writer / processing threads if required
 		let (out_tx, rx) = bounded(64);
 		let (mut smooth_writer_task, sw_send) = if cfg.smooth() {
 			let (tx, srx) = bounded(64);

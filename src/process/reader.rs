@@ -270,16 +270,6 @@ impl Record {
 	}
 }
 
-#[derive(Debug)]
-pub struct MultiRecord {
-	pub reg_idx: u32,
-	pub pos: usize,
-	pub two_base: bool,
-	pub strand: Strand,
-	pub counts: Vec<Counts>,
-	pub imp_counts: Option<Vec<ImpCounts>>,
-	pub smooth_fit: Option<Vec<Option<SmoothFit>>>,
-}
 
 pub(super) fn reader_thread(cfg: &Config, mut hts_vec: Vec<Hts>, sample_idx: usize, mut sender: Sender<MsgBlock>, final_level: bool)-> anyhow::Result<()> {
 
