@@ -162,7 +162,7 @@ fn summary_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec
 fn handle_similarity_opts(cfg: &mut Config, msub: &ArgMatches) {
 
 	// Handle similarity type
-	let similarity_type = if let Some(s) = msub.value_of("type") {
+	let similarity_type = if let Some(s) = msub.value_of("stype") {
 		SimilarityType::from_str(s).expect("Unknown Similarity Type")
 	} else {
 		SimilarityType::Correlation
