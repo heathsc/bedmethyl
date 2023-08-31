@@ -17,6 +17,8 @@ const FIT_CONST: f64 = 0.1;
 pub struct SmoothFit {
    effects: [f64; 3], // [a0, a1, a2]: we fit a local quadratic, so y = a0 + a1 * x + a2 * x^2
    cov: [f64; 6], // Var-cov matrix (lower triangle) for effect estimates
+   phi: f64, // Final estimate of phi
+   res_var: f64, // Estimate of residual variance
    pub(super) bandwidth: f64,
    pub(super) pos: usize,
 }
@@ -37,8 +39,9 @@ impl SmoothFit {
             + x2 * (cov[3] + x * cov[4] + x2 * cov[5])
          )
       };
+      // let var = var + self.res_var;
+      let n = ((1.0 - self.phi) / (var - self.phi)).max(0.0);
       let m = (z.sin() + 1.0) * 0.5;
-      let n = 1.0 / var;
       ImpCounts {
          non_converted: m * n,
          converted: (1.0 - m) * n,
@@ -242,7 +245,7 @@ impl <'a>SmoothFile<'a> {
          let mut xwz = [0.0; 3]; // X'WZ vector
          let mut denom = 0.0;
 
-         // Add data to work, build up X'WX and X'YZ
+         // Add data to work, build up X'WX and X'WZ
          for r in self.data.iter().filter(|r| r.is_observed()) {
             let x = (((r.pos as f64) - zpos) as f64) / h;
             let n = (r.counts.n() as f64) + 2.0 * FIT_CONST;
@@ -277,13 +280,22 @@ impl <'a>SmoothFile<'a> {
          let c = chol(&mut xwx);
          // Get updated effects
          let b = chol_solve(&c, &mut xwz);
+         // Get residual SS
+         let rss: f64 = self.work.iter().map(|v| v.rss(b)).sum();
+         // Get residual variance
+         let s2 = rss / ((self.work.len() - 3) as f64);
          // Get Var-cov matrix of effecys
          let inv = chol_inv(c);
+ //        for x in inv.iter_mut() {
+ //           *x *= s2
+ //        }
 
          // And store results
          self.data[self.curr_idx].smooth_fit = Some(SmoothFit {
             effects: *b,
             cov: inv,
+            phi,
+            res_var: s2,
             bandwidth: h,
             pos,
          });
@@ -445,10 +457,10 @@ impl FitVal {
 
    fn accum(&self, xwx: &mut [f64; 6], xwz: &mut [f64; 3]) {
       let w = self[0] * self[6];
-      // Accumulate lower triangle of XWX
+      // Accumulate lower triangle of X'WX
       xwx[0] += w; // Sigma w
       xwx[1] += w * self[1]; // w * x
-      xwx[2] += w * self[2]; // w * x^2 - note the xwx[6] == xwx[4]
+      xwx[2] += w * self[2]; // w * x^2 - note the xwx[3] == xwx[2]
       xwx[4] += w * self[3]; // w * x^3
       xwx[5] += w * self[4]; // w * x^4
       xwz[0] += w * self[5]; // w * z
