@@ -376,7 +376,7 @@ pub(super) fn cli_model() -> ArgMatches {
                Arg::new("no_smooth")
                   .short('S').long("no-smooth")
                   .conflicts_with("smooth")
-                  .help("Generate smoothed counts using local regression [default]")
+                  .help("Use original (non-smoothed) counts")
             )
             .arg(
                Arg::new("compress")

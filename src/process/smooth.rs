@@ -39,9 +39,14 @@ impl SmoothFit {
             + x2 * (cov[3] + x * cov[4] + x2 * cov[5])
          )
       };
-      // let var = var + self.res_var;
-      let n = ((1.0 - self.phi) / (var - self.phi)).max(0.0);
+//      let var1 = var + self.res_var;
+      let n = 1.0 / var;
+
       let m = (z.sin() + 1.0) * 0.5;
+//      let n1 = (1.0 - self.phi) / (var - self.phi);
+//      let n2 = 1.0 / var1;
+//      let n3 = (1.0 - self.phi) / (var1 - self.phi);
+//      eprintln!("var: {var}, var1: {var1}, pi: {m}, phi: {}, {n} {n1} {n2} {n3}", self.phi);
       ImpCounts {
          non_converted: m * n,
          converted: (1.0 - m) * n,
@@ -475,10 +480,10 @@ impl FitVal {
       self[5] - (beta[0] + beta[1] * self[1] + beta[2] * self[2])
    }
 
-   // Calculate n * (z - X * Beta)^2
+   // Calculate w * (z - X * Beta)^2
    fn rss(&self, beta: &[f64; 3]) -> f64 {
       let e = self.resid(beta);
-      self[0] * e * e
+      e * e / self[0]
    }
 }
 
