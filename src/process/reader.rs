@@ -441,7 +441,7 @@ pub(super) fn reader_thread(
                             r.two_base = true;
                             r.strand = Strand::Plus;
                             ifile.last_smooth_fit =
-                                r.smooth_fit.and_then(|sf| Some((r.reg_idx, sf)));
+                                r.smooth_fit.map(|sf| (r.reg_idx, sf));
                             Some(r)
                         } else {
                             assert!(x < r.pos);

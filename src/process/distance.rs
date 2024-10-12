@@ -1,6 +1,4 @@
-use std::{
-	io::{self, Write},
-};
+use std::io::{self, Write};
 
 use crate::config::SimilarityType;
 use crate::sample::Sample;

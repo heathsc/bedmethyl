@@ -143,8 +143,6 @@ fn merge_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<H
 
 	if msub.is_present("smooth") {
 		handle_smooth_opts(&mut cfg, msub, true)?
-	} else {
-
 	}
 
 	Ok((cfg, hts_vec))

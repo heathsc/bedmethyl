@@ -242,7 +242,7 @@ fn heatmap_thread(n_samples: usize, cfg: HeatMapCfg, recv: Receiver<Vec<VObs>>) 
 		
 	let max_n = cfg.max_n;
 	let min_n = cfg.min_n;
-	let full_limit = cfg.full_limit as u32;
+	let full_limit = cfg.full_limit;
 	let cache = Arc::new(BetaCache::new(min_n, max_n, &lnp));
 
 	let ssize = n_samples * (n_samples - 1) / 2;
@@ -426,8 +426,8 @@ fn heatmap_calc(ssize: usize, cache: Arc<BetaCache>, lnp: Arc<LnP>, rx: Receiver
 
 fn add_contrib(n: usize, cts: &[u32; 4], cache: &BetaCache, lnp: &LnP, hd: &mut HeatDist) {
 	let n_bins = lnp.n_bins();
-	let td1 = cache.get_dist(&lnp, cts[0], cts[1]);
-	let td2 = cache.get_dist(&lnp, cts[2], cts[3]);
+	let td1 = cache.get_dist(lnp, cts[0], cts[1]);
+	let td2 = cache.get_dist(lnp, cts[2], cts[3]);
 	hd.n += n;
 	let nn = n as f64;
 	let mut ix = 0;
