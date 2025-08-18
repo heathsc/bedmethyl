@@ -77,7 +77,7 @@ impl Beta {
         ct[ix] += 1;
     }
 
-    fn handle_cache(&mut self, bins: &mut Vec<Vec<f64>>) {
+    fn handle_cache(&mut self, bins: &mut [Vec<f64>]) {
         for ((a, b), v) in self.cache.drain() {
             let sum = self.lnp.get_dist(a, b, &mut self.tmp);
             for (ix, ct) in v.iter().enumerate() {

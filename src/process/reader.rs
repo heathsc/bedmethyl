@@ -9,7 +9,7 @@ use r_htslib::*;
 
 use crate::config::*;
 
-use super::{smooth::*, MsgBlock, BLOCK_SIZE};
+use super::{BLOCK_SIZE, MsgBlock, smooth::*};
 
 use crate::regions::Regions;
 use crate::sample::Sample;
@@ -419,14 +419,13 @@ pub(super) fn reader_thread(
             } else {
                 None
             };
-
             for ifile in ifiles.iter_mut() {
                 let mut sm: Option<SmoothFit> = None;
                 if let Some(rec) = ifile.current.take().and_then(|mut r| {
-                    if let Some((r_idx, _)) = ifile.last_smooth_fit {
-                        if r_idx != idx {
-                            ifile.last_smooth_fit = None
-                        }
+                    if let Some((r_idx, _)) = ifile.last_smooth_fit
+                        && r_idx != idx
+                    {
+                        ifile.last_smooth_fit = None
                     }
                     if r.reg_idx == idx {
                         if r.pos == x {
@@ -440,8 +439,7 @@ pub(super) fn reader_thread(
                             r.pos -= 1;
                             r.two_base = true;
                             r.strand = Strand::Plus;
-                            ifile.last_smooth_fit =
-                                r.smooth_fit.map(|sf| (r.reg_idx, sf));
+                            ifile.last_smooth_fit = r.smooth_fit.map(|sf| (r.reg_idx, sf));
                             Some(r)
                         } else {
                             assert!(x < r.pos);
@@ -626,10 +624,10 @@ pub(super) fn merge_thread(
                 if let Some(rec) = chan.curr_rec.take().and_then(|mut r| {
                     // Remove last_smooth_fit for any channels where we have changed contig
                     for sf in chan.last_smooth_fit.iter_mut() {
-                        if let Some((r_idx, _)) = sf {
-                            if *r_idx != idx {
-                                *sf = None
-                            }
+                        if let Some((r_idx, _)) = sf
+                            && *r_idx != idx
+                        {
+                            *sf = None
                         }
                     }
                     if r.reg_idx == idx {
@@ -728,8 +726,8 @@ pub(super) fn merge_thread(
                         counts.push(Counts::default())
                     }
                     if let Some(ic) = imp_counts.as_mut() {
-                        for ix in 0..chan.ns {
-                            let icn = sm[ix].as_ref().map(|sf| sf.impute(x)).unwrap_or_default();
+                        for s in sm[..chan.ns].iter() {
+                            let icn = s.as_ref().map(|sf| sf.impute(x)).unwrap_or_default();
                             ic.push(icn);
                         }
                     }

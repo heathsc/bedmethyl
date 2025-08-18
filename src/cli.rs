@@ -120,10 +120,10 @@ fn merge_com(m: &ArgMatches, msub: &ArgMatches) -> anyhow::Result<(Config, Vec<H
 	let value_delim = if msub.is_present("split_output") {
 		Some(ValueDelim::Split)
 	} else {
-		msub.value_of("value_delim").map(ValueDelim::from_str).flatten()
+		msub.value_of("value_delim").and_then(ValueDelim::from_str)
 	};
 
-	let output_type = msub.value_of("output_type").map(OutputType::from_str).flatten();
+	let output_type = msub.value_of("output_type").and_then(OutputType::from_str);
 
 	cfg.set_merge_outputs(output_type, value_delim, msub.values_of("output_names"));
 
@@ -211,7 +211,7 @@ fn handle_smooth_opts(cfg: &mut Config, msub: &ArgMatches, output: bool) -> anyh
 		let value_delim = if msub.is_present("split_output") {
 			Some(ValueDelim::Split)
 		} else {
-			msub.value_of("value_delim").map(ValueDelim::from_str).flatten()
+			msub.value_of("value_delim").and_then(ValueDelim::from_str)
 		};
 
 		let output_type = msub.value_of("smooth_output_type")

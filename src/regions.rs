@@ -33,17 +33,17 @@ fn write_ctg(f: &mut fmt::Formatter, s: &str) -> fmt::Result {
 impl<'a> fmt::Display for Reg<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Reg::Chrom(a) => write_ctg(f, *a),
+            Reg::Chrom(a) => write_ctg(f, a),
             Reg::Open(a, x) => {
-                write_ctg(f, *a)?;
+                write_ctg(f, a)?;
                 write!(f, ":{}", *x)
             }
             Reg::Closed(a, x, y) if *x == 0 => {
-                write_ctg(f, *a)?;
+                write_ctg(f, a)?;
                 write!(f, ":-{}", *y)
             }
             Reg::Closed(a, x, y) => {
-                write_ctg(f, *a)?;
+                write_ctg(f, a)?;
                 write!(f, ":{}-{}", *x, *y)
             }
         }
@@ -59,7 +59,7 @@ lazy_static! {
     static ref RE_REGION2: Regex = Regex::new(r#"^([0-9A-Za-z!#$%&+./:;?@^_|~-][0-9A-Za-z!#$%&*+./;=?@^_|~-]*):?([0-9,]+)?-?([0-9,]+)?"#).unwrap();
 
     // RegexSet to check for valid contig
-    static ref RE_SET_CONTIG: RegexSet = RegexSet::new(&[
+    static ref RE_SET_CONTIG: RegexSet = RegexSet::new([
         r"^[{]([0-9A-Za-z!#$%&+./:;?@^_|~-][0-9A-Za-z!#$%&*+./:;=?@^_|~-]*)[}]$",
         r"^([0-9A-Za-z!#$%&+./:;?@^_|~-][0-9A-Za-z!#$%&*+./;=?@^_|~-]*)$"
     ]).unwrap();
@@ -249,7 +249,7 @@ impl Regions {
         }
     }
 
-    pub fn iter(&self) -> RegionIter {
+    pub fn iter<'a>(&'a self) -> RegionIter<'a> {
         let mut reg_vec = self.ctg_reg.values();
         let regs = reg_vec.next().map(|v| v.iter());
 
@@ -336,7 +336,7 @@ impl Regions {
         let mut regions = Regions::default();
         for s in ctgs.iter() {
             let region = Region {
-                contig: regions.add_contig(*s),
+                contig: regions.add_contig(s),
                 start: 0,
                 end: None,
                 sites: None,

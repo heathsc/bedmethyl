@@ -14,12 +14,12 @@ use crate::{
 };
 
 use super::{
+    MsgBlock,
     distance::Distance,
     heatmaps::{HeatMaps, Obs},
     hist::Hist,
     print_value::{get_print_value_f64, get_print_value_u32},
     reader::{Counts, ImpCounts},
-    MsgBlock,
 };
 
 fn print_header<T>(
@@ -37,7 +37,7 @@ fn print_header<T>(
 }
 
 pub(super) fn smooth_writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> anyhow::Result<()> {
-    let mut pv = match get_print_value_f64(&cfg, true)? {
+    let mut pv = match get_print_value_f64(cfg, true)? {
         Some(p) => p,
         None => return Ok(()),
     };
@@ -130,7 +130,7 @@ pub(super) fn writer_thread(
     // Keep track of the current contig so that we can update the
     let mut curr_contig: Option<&str> = None;
 
-    let mut pv = get_print_value_u32(&cfg, false)?;
+    let mut pv = get_print_value_u32(cfg, false)?;
 
     let min_counts = cfg.min_counts();
     let min_samples = cfg.min_samples();
@@ -163,25 +163,23 @@ pub(super) fn writer_thread(
         .map(|stype| Distance::new(samples.len(), stype));
 
     while let Ok(mblk) = recv.recv() {
-        for (rec, sample) in mblk.iter().zip(samples.iter()) {
-            let conv = sample.conversion.unwrap_or_default();
-
-            let conv_f = |a, b| {
+        for rec in mblk.iter() {
+            let conv_f = |conv: &Conversion, a, b| {
                 (((a + 1) as f64 / (a + b + 2) as f64 - 1.0 + conv.conversion)
                     / (conv.conversion - conv.over_conversion))
                     .clamp(0.0, 1.0)
             };
 
             let mut var = VarStore::new();
-            for (a, b) in rec.counts.iter().map(|c| {
+            for (a, b, conv) in rec.counts.iter().zip(samples.iter()).map(|(c, sample)| {
                 let Counts {
                     non_converted: ncnv,
                     converted: cnv,
                 } = c;
-                (*ncnv, *cnv)
+                (*ncnv, *cnv, sample.conversion.unwrap_or_default())
             }) {
                 if a + b >= min_counts {
-                    var.add(conv_f(a, b))
+                    var.add(conv_f(&conv, a, b))
                 }
             }
             let chrom = cfg
@@ -219,21 +217,24 @@ pub(super) fn writer_thread(
                     } else {
                         None
                     };
-                    for (i, ct) in rec.counts.iter().enumerate() {
+                    for (i, (ct, sample)) in rec.counts.iter().zip(samples.iter()).enumerate() {
                         let Counts {
                             non_converted: a,
                             converted: b,
                         } = *ct;
+                        let conv = sample.conversion.unwrap_or_default();
+                        let cf = |a, b| conv_f(&conv, a, b);
+                        
                         if a + b >= min_counts {
                             stats[i].add_site(a, b);
                             if let Some(p) = pv.as_mut() {
                                 p.print_value(a, b)?
                             }
                             if let Some(d) = distance.as_mut() {
-                                d.add_obs(i, conv_f(a, b))
+                                d.add_obs(i, cf(a, b), a + b)
                             };
                             if let Some(hst) = hist.as_mut() {
-                                hst.add_obs(i, a, b, conv_f)
+                                hst.add_obs(i, a, b, cf)
                             }
                             if let Some(v) = ovec.as_mut() {
                                 v.push(Obs { idx: i, a, b })
@@ -265,7 +266,10 @@ pub(super) fn writer_thread(
         debug!("Writing out sample statistics to {:?}", fname);
         let mut summ_wrt = BufWriter::new(File::create(fname)?);
 
-        writeln!(summ_wrt, "barcode\tsample\tn_sites_passed\tmeth_mean\tmeth_var\tcounts:min\tcounts:Q1\tcounts:Q2\tcounts:Q3\tcounts:max")?;
+        writeln!(
+            summ_wrt,
+            "barcode\tsample\tn_sites_passed\tmeth_mean\tmeth_var\tcounts:min\tcounts:Q1\tcounts:Q2\tcounts:Q3\tcounts:max"
+        )?;
         for st in stats.iter() {
             writeln!(summ_wrt, "{}", st)?;
         }
@@ -305,12 +309,15 @@ pub(super) fn writer_thread(
 
     // Write out heatmap data if required
 
-    if let Some(mut hm) = heatmaps {
-        if samples.len() > 1 {
-            let fname = cfg.mk_path("heatmaps.txt", false, false);
-            let mut summ_wrt = BufWriter::new(File::create(fname)?);
-            hm.print_table(&mut summ_wrt, samples, cfg.blank_lines())?;
-        }
+    if let Some(mut hm) = heatmaps
+        && samples.len() > 1
+    {
+        let fname = cfg.mk_path("heatmaps.txt", false, false);
+        let mut summ_wrt = BufWriter::new(File::create(fname)?);
+        let fname1 = cfg.mk_path("meth_diff.txt", false, false);
+        let mut summ_wrt1 = BufWriter::new(File::create(fname1)?);
+        hm.print_table(&mut summ_wrt, &mut summ_wrt1, samples, cfg.blank_lines())?;
     }
+
     Ok(())
 }

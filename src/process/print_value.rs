@@ -15,14 +15,14 @@ pub(super) trait PrintValue<T> {
 	fn print_str(&mut self, s: &str) -> io::Result<()>;
 }
 
-struct NoOutput {}
+// struct NoOutput {}
 
-impl <T>PrintValue<T> for NoOutput {
-	fn print_value(&mut self, _a: T, _b: T) -> io::Result<()> { Ok(()) }
-	fn print_missing(&mut self) -> io::Result<()> { Ok(()) }
-	fn print_header(&mut self, _id: &str) -> io::Result<()> { Ok(()) }
-	fn print_str(&mut self, _s: &str) -> io::Result<()> { Ok(()) }
-}
+//impl <T>PrintValue<T> for NoOutput {
+//	fn print_value(&mut self, _a: T, _b: T) -> io::Result<()> { Ok(()) }
+//	fn print_missing(&mut self) -> io::Result<()> { Ok(()) }
+//	fn print_header(&mut self, _id: &str) -> io::Result<()> { Ok(()) }
+//	fn print_str(&mut self, _s: &str) -> io::Result<()> { Ok(()) }
+//}
 
 struct NonconvConv {
 	wrt: Wrt,
