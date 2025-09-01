@@ -265,6 +265,7 @@ enum VType {
 /// i.e., for a header line:
 ///    @Factor<name="group",col=5>
 /// s will be "@Factor" and t will be "name=\"group\",col=5"
+#[allow(clippy::type_complexity)]
 fn proc_header_line(
     s: &str,
     t: &str,

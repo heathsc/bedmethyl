@@ -48,9 +48,10 @@ pub(super) fn smooth_writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> an
 
     info!("Starting writing of smoothed values:");
     let min_sdev = cfg.min_sdev();
-
+    let min_counts = cfg.min_counts() as f64;
+    let min_samples = cfg.min_samples();
     let samples = cfg.sample_info().samples();
-
+    
     // Print header lines if required
     print_header(Some(&mut pv), samples)?;
 
@@ -64,51 +65,66 @@ pub(super) fn smooth_writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> an
                 } = ic;
                 (*ncnv, *cnv)
             }) {
-                if a + b > 0.0001 {
+                if a + b >= min_counts {
                     var.add((a + 1.0) / (a + b + 2.0))
                 }
             }
-            let sd = var.var().sqrt();
-            let chrom = cfg
-                .regions()
-                .get(rec.reg_idx as usize)
-                .expect("Missing contig!")
-                .contig();
-            if sd >= min_sdev {
-                pv.print_str(
-                    format!(
-                        "{}\t{}\t{}\t{}\t{:.4}",
-                        chrom,
-                        rec.pos,
-                        rec.pos + if rec.two_base { 2 } else { 1 },
-                        var.n(),
-                        var.var().sqrt()
-                    )
-                    .as_str(),
-                )?;
 
-                if let Some(ict) = rec.imp_counts.as_ref() {
-                    if cfg.round_counts() {
-                        for ct in ict.iter() {
-                            if ct.imputed() {
-                                let a = ct.non_converted.round();
-                                let b = ct.converted.round();
-                                pv.print_value(a, b)?
-                            } else {
-                                pv.print_missing()?
+            if var.n() >= min_samples {
+                let sd = var.var().sqrt();
+
+                if sd >= min_sdev {
+                    let chrom = cfg
+                        .regions()
+                        .get(rec.reg_idx as usize)
+                        .expect("Missing contig!")
+                        .contig();
+
+                    pv.print_str(
+                        format!(
+                            "{}\t{}\t{}\t{}\t{:.4}",
+                            chrom,
+                            rec.pos,
+                            rec.pos + if rec.two_base { 2 } else { 1 },
+                            var.n(),
+                            var.var().sqrt()
+                        )
+                        .as_str(),
+                    )?;
+
+                    if let Some(ict) = rec.imp_counts.as_ref() {
+                        if cfg.round_counts() {
+                            for ct in ict.iter() {
+                                if ct.imputed() {
+                                    let a = ct.non_converted.round();
+                                    let b = ct.converted.round();
+                                    if a + b >= min_counts {
+                                        pv.print_value(a, b)?
+                                    } else {
+                                        pv.print_missing()?
+                                    }
+                                } else {
+                                    pv.print_missing()?
+                                }
                             }
-                        }
-                    } else {
-                        for ct in ict.iter() {
-                            if ct.imputed() {
-                                pv.print_value(ct.non_converted, ct.converted)?
-                            } else {
-                                pv.print_missing()?
+                        } else {
+                            for ct in ict.iter() {
+                                if ct.imputed() {
+                                    let a = ct.non_converted;
+                                    let b = ct.converted;
+                                    if a + b >= min_counts {
+                                        pv.print_value(a, b)?
+                                    } else {
+                                        pv.print_missing()?
+                                    }
+                                } else {
+                                    pv.print_missing()?
+                                }
                             }
                         }
                     }
+                    pv.print_str("\n")?
                 }
-                pv.print_str("\n")?
             }
         }
     }
@@ -224,7 +240,7 @@ pub(super) fn writer_thread(
                         } = *ct;
                         let conv = sample.conversion.unwrap_or_default();
                         let cf = |a, b| conv_f(&conv, a, b);
-                        
+
                         if a + b >= min_counts {
                             stats[i].add_site(a, b);
                             if let Some(p) = pv.as_mut() {
