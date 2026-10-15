@@ -9,6 +9,7 @@ use crossbeam_channel::{Receiver, Sender};
 use crate::process::print_value::PrintValue;
 use crate::{
     config::*,
+    cli::similarity_type::SimilarityType,
     sample::{Conversion, Sample},
     stats::{SampleStats, SiteStats, VarStore},
 };

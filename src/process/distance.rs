@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use crate::config::SimilarityType;
+use crate::cli::similarity_type::SimilarityType;
 use crate::sample::Sample;
 
 type PItem = (f64, [f64; 5]);

@@ -4,6 +4,7 @@ use std::{
     collections::{btree_map, BTreeMap, HashMap},
     fmt,
     io::BufRead,
+    path::Path,
     slice,
     sync::Arc,
 };
@@ -293,16 +294,16 @@ impl Regions {
         self.add_region(region)
     }
 
-    pub fn from_regions<'b, I: IntoIterator<Item = &'b str>>(reg_str: I) -> Self {
+    pub fn from_regions<'b, I: IntoIterator<Item = &'b String>>(reg_str: I) -> Self {
         let mut regions = Self::default();
 
-        for reg in reg_str.into_iter().filter_map(Reg::from_region_str) {
+        for reg in reg_str.into_iter().filter_map(|s| Reg::from_region_str(s.as_str())) {
             regions.add_reg(reg)
         }
         regions.merge()
     }
 
-    pub fn from_file<P: AsRef<str>>(file: P) -> anyhow::Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(file: P) -> anyhow::Result<Self> {
         let fname = file.as_ref();
         let mut buf = String::new();
         let mut f = compress::CompressIo::new().path(fname).bufreader()?;
@@ -452,9 +453,9 @@ pub struct Sites {
 }
 
 impl Sites {
-    pub fn from_file<P: AsRef<str>>(file: P) -> anyhow::Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(file: P) -> anyhow::Result<Self> {
         let fname = file.as_ref();
-        debug!("Reading in site list from {fname}");
+        debug!("Reading in site list from {}",fname.display());
         let mut buf = String::new();
         let mut f = compress::CompressIo::new().path(fname).bufreader()?;
         let mut contig_site = HashMap::new();
@@ -473,7 +474,7 @@ impl Sites {
                 let x = fd[1].parse::<NonZeroUsize>().with_context(|| {
                     format!(
                         "{}: {} - Could not parse position for site: {}",
-                        fname, line, fd[1]
+                        fname.display(), line, fd[1]
                     )
                 })?;
                 if !contig_site.contains_key(fd[0]) {

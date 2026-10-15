@@ -9,76 +9,7 @@ use crate::{
 	sample::SampleInfo,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum OutputType {
-	NonconvConv,
-	NonconvCov,
-	MethCov,
-	Meth
-}
-
-impl OutputType {
-	pub fn from_str(s: &str) -> Option<Self> {
-		match s.to_ascii_lowercase().as_str() {
-			"non_conv-conv" => Some(Self::NonconvConv),
-			"non_conv-cov" => Some(Self::NonconvCov),
-			"meth-cov" => Some(Self::MethCov),
-			"meth" => Some(Self::Meth),
-			_ => None,
-		}
-	}	
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ValueDelim {
-	Tab,
-	Space,
-	Semicolon,
-	Comma,
-	Slash,
-	Split,
-	None,
-}
-
-impl ValueDelim {
-	pub fn from_str(s: &str) -> Option<Self> {
-		match s.to_ascii_lowercase().as_str() {
-			"tab" => Some(Self::Tab),
-			"space" => Some(Self::Space),
-			"comma" => Some(Self::Comma),
-			"semicolon" => Some(Self::Semicolon),
-			"slash" => Some(Self::Slash),
-			_ => None,
-		}
-	}
-
-	pub fn get_delim_char(&self) -> char {
-		match self {
-			ValueDelim::Space => ' ',
-			ValueDelim::Comma => ',',
-			ValueDelim::Semicolon => ';',
-			_ => '\t',
-		}
-	}
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum SimilarityType {
-	Correlation,
-	Covariance,
-	Distance
-}
-
-impl SimilarityType {
-	pub fn from_str(s: &str) -> Option<Self> {
-		match s.to_ascii_lowercase().as_str() {
-			"correlation" => Some(Self::Correlation),
-			"covariance" => Some(Self::Covariance),
-			"distance" => Some(Self::Distance),
-			_ => None,
-		}
-	}	
-}
+use super::cli::{similarity_type::SimilarityType, value_delim::ValueDelim, output_type::OutputType};
 
 pub struct MergeOutput {
 	outputs: [Option<PathBuf>; 2],

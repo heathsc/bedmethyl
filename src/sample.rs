@@ -401,7 +401,7 @@ fn read_header(
 /// Column 1 should have the sample name and column 2 the path to the bedmethyl file for that sample.
 /// Subsequent columns contain optional sample information (i.e., groups, covariates etc.)
 /// The header lines if present give information about the extra columns
-pub fn read_sample_file(name: Option<&str>) -> anyhow::Result<SampleInfo> {
+pub fn read_sample_file<R: AsRef<Path>>(name: Option<R>) -> anyhow::Result<SampleInfo> {
     let mut rd = CompressIo::new()
         .opt_path(name)
         .bufreader()

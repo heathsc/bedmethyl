@@ -6,7 +6,6 @@ extern crate anyhow;
 mod cli;
 mod config;
 mod regions;
-mod log_utils;
 mod stats;
 mod process;
 mod sample;

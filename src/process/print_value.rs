@@ -2,7 +2,7 @@ use std::io::{self, BufWriter, Write};
 
 use r_htslib::*;
 
-use crate::config::*;
+use crate::{cli::output_type::OutputType, config::*};
 
 type Wrt = BufWriter<OwnedWriter>;
 
