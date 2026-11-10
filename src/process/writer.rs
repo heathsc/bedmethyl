@@ -43,9 +43,9 @@ pub(super) fn smooth_writer_thread(cfg: &Config, recv: Receiver<MsgBlock>) -> an
         None => return Ok(()),
     };
 
-    let tid = unsafe { libc::syscall(libc::SYS_gettid) };
+    // let tid = unsafe { libc::syscall(libc::SYS_gettid) };
     //	let tid = unsafe { libc::gettid() };
-    debug!("Smooth writer thread: {}", tid);
+    // debug!("Smooth writer thread: {}", tid);
 
     info!("Starting writing of smoothed values:");
     let min_sdev = cfg.min_sdev();
@@ -138,9 +138,9 @@ pub(super) fn writer_thread(
     recv: Receiver<MsgBlock>,
     mut smooth_tr: Option<Sender<MsgBlock>>,
 ) -> anyhow::Result<()> {
-    let tid = unsafe { libc::syscall(libc::SYS_gettid) };
+    // let tid = unsafe { libc::syscall(libc::SYS_gettid) };
     //	let tid = unsafe { libc::gettid() };
-    debug!("Writer thread: {}", tid);
+    // debug!("Writer thread: {}", tid);
 
     info!("Starting processing:");
 

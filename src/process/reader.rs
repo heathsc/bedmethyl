@@ -332,9 +332,9 @@ pub(super) fn reader_thread(
 ) -> anyhow::Result<()> {
     let nf = hts_vec.len();
 
-    let tid = unsafe { libc::syscall(libc::SYS_gettid) };
+    // let tid = unsafe { libc::syscall(libc::SYS_gettid) };
     //	let tid = unsafe { libc::gettid() };
-    debug!("Reader thread starting {}", tid);
+    debug!("Reader thread starting");
 
     debug!("Creating sample specific region lists");
     let reg_vec: Vec<_> = hts_vec
@@ -407,7 +407,7 @@ pub(super) fn reader_thread(
         // Create MultiRecord from matching individual records
 
         if let Some((idx, x, strand)) = curr {
-            trace!("Reader thread {tid} has a multirecord");
+            trace!("Reader thread has a multirecord");
             let mut counts = Vec::with_capacity(nf);
             let mut imp_counts = if cfg.smooth() {
                 Some(Vec::with_capacity(nf))
@@ -575,9 +575,9 @@ pub(super) fn merge_thread(
     mut sender: Sender<MsgBlock>,
     final_level: bool,
 ) -> anyhow::Result<()> {
-    let tid = unsafe { libc::syscall(libc::SYS_gettid) };
+    // let tid = unsafe { libc::syscall(libc::SYS_gettid) };
     //	let tid = unsafe { libc::gettid() };
-    debug!("Starting merge thread {}", tid);
+    debug!("Starting merge thread");
 
     let mut channels: Vec<_> = recv_vec
         .drain(..)
